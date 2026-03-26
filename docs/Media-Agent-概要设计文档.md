@@ -167,8 +167,6 @@ CREATE TABLE users (
     display_name VARCHAR(50),
     avatar_url VARCHAR(255),
     bio TEXT,
-    email VARCHAR(255),
-    phone VARCHAR(20),
     status VARCHAR(20) DEFAULT 'active',
     last_login_at TIMESTAMP,
     password_changed_at TIMESTAMP,
