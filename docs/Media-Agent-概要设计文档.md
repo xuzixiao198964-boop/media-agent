@@ -74,10 +74,10 @@
   - 选择理由: 高性能，自动生成API文档，异步支持好
 - **数据库**: PostgreSQL 13+
   - 选择理由: 功能完整，事务支持好，JSONB支持
-- **缓存/队列**: Redis 6+
-  - 选择理由: 高性能，支持多种数据结构，成熟稳定
-- **任务队列**: Celery + Redis
-  - 选择理由: Python生态成熟，与FastAPI集成好
+- **缓存/队列**: 轻量级内存缓存 + 数据库队列
+  - 选择理由: 基于服务器实际情况（104.244.90.202），避免Redis依赖，减少资源占用
+- **任务队列**: Celery + 数据库作为Broker
+  - 选择理由: 基于实际服务器环境，使用数据库作为消息队列，避免额外服务依赖
 - **ORM**: SQLAlchemy + Async
   - 选择理由: 功能强大，异步支持，社区活跃
 - **认证**: JWT + bcrypt
@@ -572,67 +572,173 @@ GET    /api/v1/publish/results  发布结果统计
   - 不影响用户任务处理
   - 可随时中断
 
-#### 1.6.4 基于VPS性能的任务队列配置
+#### 1.6.4 基于实际服务器的轻量级任务队列配置
+
+基于服务器104.244.90.202的实际情况，采用轻量级方案，避免Redis依赖：
 
 ```python
-# Celery配置 - 针对VPS性能优化
-CELERY_BROKER_URL = 'redis://localhost:6379/0'
-CELERY_RESULT_BACKEND = 'redis://localhost:6379/1'
+# Celery配置 - 使用数据库作为Broker（避免Redis依赖）
+CELERY_BROKER_URL = 'db+postgresql://mediaagent:secure_password@localhost/media_agent'
+CELERY_RESULT_BACKEND = 'db+postgresql://mediaagent:secure_password@localhost/media_agent'
 
-# 串行处理配置 - 关键优化
-CELERYD_CONCURRENCY = 1  # 视频生成任务串行处理
-CELERYD_MAX_TASKS_PER_CHILD = 10  # 每处理10个任务重启worker，避免内存泄漏
-CELERY_ACKS_LATE = True  # 任务执行完成后才确认，避免任务丢失
+# 串行处理配置 - 关键优化（基于VPS有限资源）
+CELERYD_CONCURRENCY = 1  # 视频生成任务串行处理（必须）
+CELERYD_MAX_TASKS_PER_CHILD = 5  # 每处理5个任务重启worker（内存有限）
+CELERY_ACKS_LATE = True  # 任务执行完成后才确认
+CELERY_TASK_STORE_ERRORS_EVEN_IF_IGNORED = True  # 存储错误信息
 
-# 任务超时配置
-CELERY_TASK_TIME_LIMIT = 600  # 单个任务最长10分钟（视频生成可能较慢）
-CELERY_TASK_SOFT_TIME_LIMIT = 540  # 软超时9分钟，给清理时间
+# 任务超时配置（基于实际处理时间）
+CELERY_TASK_TIME_LIMIT = 600  # 单个任务最长10分钟
+CELERY_TASK_SOFT_TIME_LIMIT = 540  # 软超时9分钟
 CELERY_TASK_ALWAYS_EAGER = False  # 生产环境必须为False
 
-# 序列化配置
+# 序列化配置（简化）
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TIMEZONE = 'Asia/Shanghai'
 CELERY_ENABLE_UTC = True
 
-# 任务路由配置 - 实现串行处理
-CELERY_TASK_ROUTES = {
-    'app.tasks.run_generation_job_task': {
-        'queue': 'video_generation',
-        'routing_key': 'video.generation',
-    },
-    'app.tasks.run_publish_job_task': {
-        'queue': 'publish',
-        'routing_key': 'publish',
-    },
-    'app.tasks.fetch_article_task': {
-        'queue': 'fetch',
-        'routing_key': 'fetch',
-    },
+# 数据库Broker表结构（Celery自动创建）
+# 1. celery_taskmeta - 任务结果存储
+# 2. celery_tasksetmeta - 任务集存储
+# 3. celery_worker - Worker状态
+# 4. 其他相关表
+
+# 轻量级队列管理（不使用复杂路由，简化处理）
+CELERY_TASK_DEFAULT_QUEUE = 'default'
+CELERY_TASK_DEFAULT_EXCHANGE = 'default'
+CELERY_TASK_DEFAULT_ROUTING_KEY = 'default'
+
+# 内存缓存替代方案（不使用Redis）
+CACHE_CONFIG = {
+    'backend': 'app.cache.database_cache.DatabaseCache',
+    'default_ttl': 300,  # 默认5分钟缓存
+    'max_entries': 100,  # 最大缓存条目数
 }
 
-# 队列配置 - 分离不同类型任务
-CELERY_TASK_QUEUES = {
-    'video_generation': {
-        'exchange': 'media_agent',
-        'exchange_type': 'direct',
-        'routing_key': 'video.generation',
-        'queue_arguments': {
-            'x-max-length': 10,  # 最大10个排队任务
-        }
-    },
-    'publish': {
-        'exchange': 'media_agent',
-        'exchange_type': 'direct',
-        'routing_key': 'publish',
-    },
-    'fetch': {
-        'exchange': 'media_agent',
-        'exchange_type': 'direct',
-        'routing_key': 'fetch',
-    },
-}
+# 数据库缓存实现示例
+class DatabaseCache:
+    """使用数据库表实现的简单缓存"""
+    def __init__(self):
+        self.table_name = 'system_cache'
+        
+    def get(self, key):
+        # 从数据库缓存表查询
+        pass
+        
+    def set(self, key, value, ttl=300):
+        # 存储到数据库缓存表
+        pass
+        
+    def delete(self, key):
+        # 从数据库缓存表删除
+        pass
+```
+
+#### 1.6.5 数据库队列表设计
+
+```sql
+-- Celery任务表（Celery自动管理）
+-- 1. celery_taskmeta - 任务元数据
+-- 2. celery_tasksetmeta - 任务集元数据
+
+-- 自定义任务队列管理表
+CREATE TABLE task_queue (
+    id SERIAL PRIMARY KEY,
+    task_type VARCHAR(50) NOT NULL,  -- 任务类型: video_generation, publish, fetch
+    task_data JSONB NOT NULL,        -- 任务数据
+    status VARCHAR(20) DEFAULT 'pending',  -- pending, processing, completed, failed
+    priority INTEGER DEFAULT 0,      -- 优先级（0-高，1-中，2-低）
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    error_message TEXT,
+    result_data JSONB
+);
+
+-- 系统缓存表（替代Redis缓存）
+CREATE TABLE system_cache (
+    id SERIAL PRIMARY KEY,
+    cache_key VARCHAR(255) UNIQUE NOT NULL,
+    cache_value TEXT NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 创建索引优化查询
+CREATE INDEX idx_task_queue_status ON task_queue(status);
+CREATE INDEX idx_task_queue_priority ON task_queue(priority, created_at);
+CREATE INDEX idx_system_cache_expires ON system_cache(expires_at);
+CREATE INDEX idx_system_cache_key ON system_cache(cache_key);
+```
+
+#### 1.6.6 轻量级任务调度器
+
+```python
+# 基于数据库的简单任务调度器
+class DatabaseTaskScheduler:
+    """使用数据库实现的轻量级任务调度器"""
+    
+    def __init__(self, db_session):
+        self.db = db_session
+        
+    def enqueue_task(self, task_type, task_data, priority=0):
+        """将任务加入队列"""
+        task = TaskQueue(
+            task_type=task_type,
+            task_data=task_data,
+            status='pending',
+            priority=priority
+        )
+        self.db.add(task)
+        self.db.commit()
+        return task.id
+    
+    def get_next_task(self):
+        """获取下一个待处理任务（串行处理）"""
+        # 查找pending状态的任务，按优先级和创建时间排序
+        task = self.db.query(TaskQueue).filter(
+            TaskQueue.status == 'pending'
+        ).order_by(
+            TaskQueue.priority.asc(),
+            TaskQueue.created_at.asc()
+        ).first()
+        
+        if task:
+            task.status = 'processing'
+            task.started_at = datetime.utcnow()
+            self.db.commit()
+            
+        return task
+    
+    def complete_task(self, task_id, result_data=None):
+        """标记任务完成"""
+        task = self.db.query(TaskQueue).get(task_id)
+        if task:
+            task.status = 'completed'
+            task.completed_at = datetime.utcnow()
+            task.result_data = result_data
+            self.db.commit()
+    
+    def fail_task(self, task_id, error_message):
+        """标记任务失败"""
+        task = self.db.query(TaskQueue).get(task_id)
+        if task:
+            task.status = 'failed'
+            task.completed_at = datetime.utcnow()
+            task.error_message = error_message
+            self.db.commit()
+    
+    def get_queue_stats(self):
+        """获取队列统计信息"""
+        stats = self.db.query(
+            TaskQueue.status,
+            func.count(TaskQueue.id).label('count')
+        ).group_by(TaskQueue.status).all()
+        
+        return {status: count for status, count in stats}
 ```
 
 #### 1.6.5 用户等待时间管理设计
@@ -769,29 +875,129 @@ CREATE INDEX idx_generation_jobs_status ON generation_jobs(status);
 CREATE INDEX idx_user_videos_user_id ON user_videos(user_id);
 ```
 
-**2. 缓存优化（Redis智能使用）**:
+**2. 缓存优化（轻量级内存缓存 + 数据库缓存）**:
 ```python
-# 多级缓存策略
+# 多级缓存策略（不使用Redis）
 CACHE_CONFIG = {
-    'user_sessions': {'ttl': 3600, 'max_size': 1000},      # 用户会话1小时
-    'api_responses': {'ttl': 300, 'max_size': 500},        # API响应5分钟
-    'task_results': {'ttl': 1800, 'max_size': 100},        # 任务结果30分钟
-    'system_config': {'ttl': 86400, 'max_size': 50},       # 系统配置24小时
+    'user_sessions': {'ttl': 3600, 'max_size': 100},      # 用户会话1小时（内存缓存）
+    'api_responses': {'ttl': 300, 'max_size': 50},        # API响应5分钟（内存缓存）
+    'task_results': {'ttl': 1800, 'storage': 'database'}, # 任务结果30分钟（数据库存储）
+    'system_config': {'ttl': 86400, 'storage': 'database'}, # 系统配置24小时（数据库存储）
 }
 
-# 缓存穿透防护
-def get_with_penetration_protection(key, fetch_func, ttl=300):
-    """带缓存穿透防护的获取函数"""
-    value = redis.get(key)
+# 内存缓存实现（简单LRU缓存）
+import threading
+from collections import OrderedDict
+from datetime import datetime, timedelta
+
+class MemoryCache:
+    """简单的内存缓存实现（LRU策略）"""
+    def __init__(self, max_size=100):
+        self.cache = OrderedDict()
+        self.max_size = max_size
+        self.lock = threading.RLock()
+        
+    def get(self, key):
+        with self.lock:
+            if key not in self.cache:
+                return None
+                
+            value, expires_at = self.cache[key]
+            if expires_at and datetime.now() > expires_at:
+                del self.cache[key]
+                return None
+                
+            # 移动到最近使用位置
+            self.cache.move_to_end(key)
+            return value
+    
+    def set(self, key, value, ttl=None):
+        with self.lock:
+            expires_at = None
+            if ttl:
+                expires_at = datetime.now() + timedelta(seconds=ttl)
+                
+            self.cache[key] = (value, expires_at)
+            self.cache.move_to_end(key)
+            
+            # 如果超过最大大小，删除最旧的条目
+            if len(self.cache) > self.max_size:
+                self.cache.popitem(last=False)
+    
+    def delete(self, key):
+        with self.lock:
+            if key in self.cache:
+                del self.cache[key]
+
+# 数据库缓存实现
+class DatabaseCache:
+    """使用数据库实现的持久化缓存"""
+    def __init__(self, db_session):
+        self.db = db_session
+        
+    def get(self, key):
+        from app.models import SystemCache
+        from sqlalchemy import and_
+        
+        cache_entry = self.db.query(SystemCache).filter(
+            and_(
+                SystemCache.cache_key == key,
+                SystemCache.expires_at > datetime.utcnow()
+            )
+        ).first()
+        
+        return cache_entry.cache_value if cache_entry else None
+    
+    def set(self, key, value, ttl=300):
+        from app.models import SystemCache
+        
+        expires_at = datetime.utcnow() + timedelta(seconds=ttl)
+        
+        # 更新或插入
+        cache_entry = self.db.query(SystemCache).filter(
+            SystemCache.cache_key == key
+        ).first()
+        
+        if cache_entry:
+            cache_entry.cache_value = value
+            cache_entry.expires_at = expires_at
+            cache_entry.updated_at = datetime.utcnow()
+        else:
+            cache_entry = SystemCache(
+                cache_key=key,
+                cache_value=value,
+                expires_at=expires_at
+            )
+            self.db.add(cache_entry)
+        
+        self.db.commit()
+    
+    def delete(self, key):
+        from app.models import SystemCache
+        
+        self.db.query(SystemCache).filter(
+            SystemCache.cache_key == key
+        ).delete()
+        self.db.commit()
+
+# 缓存穿透防护（使用数据库缓存）
+def get_with_penetration_protection(key, fetch_func, ttl=300, cache_type='database'):
+    """带缓存穿透防护的获取函数（不使用Redis）"""
+    if cache_type == 'memory':
+        cache = memory_cache
+    else:
+        cache = database_cache
+        
+    value = cache.get(key)
     if value is not None:
         return value if value != '__NULL__' else None
     
     # 缓存未命中，获取数据
     value = fetch_func()
     if value is None:
-        redis.setex(key, ttl, '__NULL__')  # 缓存空值
+        cache.set(key, '__NULL__', ttl)  # 缓存空值
     else:
-        redis.setex(key, ttl, value)
+        cache.set(key, value, ttl)
     return value
 ```
 
@@ -944,10 +1150,10 @@ def monitor_system_load():
 │  │  │ • 定期备份（pg_dump + cron）                 │  │  │
 │  │  └─────────────────────────────────────────────┘  │  │
 │  │  ┌─────────────────────────────────────────────┐  │  │
-│  │  │ Redis缓存服务 (端口:6379)                    │  │  │
-│  │  │ • Celery消息代理                             │  │  │
-│  │  │ • 会话缓存、API缓存                          │  │  │
-│  │  │ • 内存优化（maxmemory 512mb）                │  │  │
+│  │  │ 轻量级缓存服务                               │  │  │
+│  │  │ • 内存缓存（LRU策略，最大100条目）            │  │  │
+│  │  │ • 数据库缓存（system_cache表）                │  │  │
+│  │  │ • Celery使用数据库作为Broker                  │  │  │
 │  │  └─────────────────────────────────────────────┘  │  │
 │  └─────────────────────────────────────────────────────┘  │
 │                                                             │
@@ -1026,24 +1232,22 @@ sudo chown -R mediaagent:mediaagent /data
 sudo chmod 755 /data
 ```
 
-**阶段二：依赖服务安装**
+**阶段二：依赖服务安装（简化版，避免Redis）**
 ```bash
-# 1. 安装PostgreSQL
+# 1. 安装PostgreSQL（必需）
 sudo apt install -y postgresql postgresql-contrib
 sudo -u postgres psql -c "CREATE USER mediaagent WITH PASSWORD 'secure_password';"
 sudo -u postgres psql -c "CREATE DATABASE media_agent OWNER mediaagent;"
 
-# 2. 安装Redis
-sudo apt install -y redis-server
-sudo sed -i 's/supervised no/supervised systemd/' /etc/redis/redis.conf
-sudo systemctl restart redis
-
-# 3. 安装Nginx
+# 2. 安装Nginx（必需）
 sudo apt install -y nginx
 sudo systemctl enable nginx
 
-# 4. 安装FFmpeg（视频处理）
+# 3. 安装FFmpeg（必需，视频处理）
 sudo apt install -y ffmpeg
+
+# 注意：不安装Redis，使用数据库作为Celery Broker
+# 注意：不安装额外缓存服务，使用内存缓存+数据库缓存
 ```
 
 **阶段三：应用部署配置**
@@ -1111,15 +1315,14 @@ sudo crontab -e
 
 **阶段六：健康检查和验证**
 ```bash
-# 1. 服务状态检查
+# 1. 服务状态检查（简化，不检查Redis）
 sudo systemctl status media-agent-backend
 sudo systemctl status media-agent-worker
 sudo systemctl status nginx
 sudo systemctl status postgresql
-sudo systemctl status redis
 
-# 2. 端口监听检查
-sudo netstat -tlnp | grep -E '8001|9090|5432|6379'
+# 2. 端口监听检查（简化，不检查6379）
+sudo netstat -tlnp | grep -E '8001|9090|5432'
 
 # 3. API健康检查
 curl http://localhost:9090/health
@@ -1128,20 +1331,26 @@ curl http://localhost:9090/api/v1/status
 # 4. 前端访问测试
 curl -I http://localhost:8001
 
-# 5. 任务队列测试
+# 5. 任务队列测试（使用数据库作为Broker）
 # 创建测试任务，验证串行处理功能
+# 检查数据库中的task_queue表状态
+
+# 6. 数据库缓存测试
+# 检查system_cache表功能是否正常
 ```
 
-#### 1.9.4 部署验证清单
+#### 1.9.4 部署验证清单（简化版，无Redis）
 - [ ] 所有服务正常运行（systemctl status检查）
-- [ ] 端口监听正常（8001, 9090, 5432, 6379）
+- [ ] 端口监听正常（8001前端, 9090API, 5432数据库）
 - [ ] API接口可访问（/health, /api/v1/status）
 - [ ] 前端页面可访问（http://104.244.90.202:8001）
 - [ ] 数据库连接正常（可执行简单查询）
-- [ ] Redis连接正常（可设置和获取键值）
+- [ ] 数据库缓存功能正常（system_cache表可读写）
+- [ ] 任务队列功能正常（task_queue表可操作）
 - [ ] 文件上传功能正常（可上传测试文件）
 - [ ] 视频生成任务可提交（串行处理验证）
 - [ ] 用户等待时间提示正常（进度反馈测试）
+- [ ] 内存缓存功能正常（简单键值存取测试）
 - [ ] 系统监控脚本运行正常（资源使用监控）
 
 ### 1.10 监控和运维设计
@@ -1228,30 +1437,36 @@ class PasswordService:
 ## 文档总结
 
 ### 文档更新说明
-本概要设计文档已根据需求文档（版本1.3）进行更新，主要调整包括：
+本概要设计文档已根据需求文档（版本1.3）和实际服务器情况进行更新，主要调整包括：
 
 #### 1. 核心架构调整
 - **服务器环境**: 从通用服务器调整为远程VPS服务器（104.244.90.202）
 - **性能策略**: 从并发处理调整为**串行任务处理**策略
 - **用户期望**: 增加**用户等待时间管理**和预期设置
+- **技术栈简化**: **去掉Redis依赖**，使用轻量级替代方案
 
 #### 2. 关键设计优化
 - **任务队列设计**: 视频生成任务严格串行，避免CPU/内存过载
 - **性能指标**: 基于VPS性能重新定义关键性能指标
 - **部署架构**: 针对单VPS服务器的优化部署方案
 - **配置优化**: 提供具体的FFmpeg、Nginx、数据库优化配置
+- **架构简化**: **使用数据库作为Celery Broker**，避免Redis依赖
+- **缓存优化**: **内存缓存 + 数据库缓存**替代Redis缓存
 
 #### 3. 实际实施建议
 - **串行处理配置**: Celery `CELERYD_CONCURRENCY = 1`
 - **等待时间算法**: 基于队列位置和平均处理时间估算
 - **进度反馈系统**: 分阶段实时进度更新
 - **资源监控**: 基于系统负载动态调整任务处理
+- **轻量级缓存**: 实现内存缓存和数据库缓存
+- **数据库队列**: 使用数据库作为任务队列存储
 
 #### 4. 部署实施指导
 - **VPS环境准备**: 针对104.244.90.202的具体部署步骤
 - **服务配置**: systemd服务配置，Nginx反向代理
-- **健康检查**: 完整的部署验证清单
+- **健康检查**: 完整的部署验证清单（简化版，无Redis）
 - **监控备份**: 系统监控和数据库备份方案
+- **依赖简化**: **不安装Redis**，减少资源占用和部署复杂度
 
 ### 设计原则总结
 1. **稳定性优先**: 在VPS有限资源下，确保系统稳定运行
