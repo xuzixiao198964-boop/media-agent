@@ -17,6 +17,8 @@ class User(Base):
     avatar_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     bio: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    lock_until: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_login_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     password_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -154,6 +156,34 @@ class VoicePrint(Base):
     tencent_vrs_task_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     voice_type: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     fast_voice_type: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+
+
+class UserSession(Base):
+    """活跃会话（每用户最多 3 个；JWT refresh token 绑定）。"""
+
+    __tablename__ = "user_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    refresh_token_hash: Mapped[str] = mapped_column(String(128), unique=True)
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    user_agent: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class LoginHistory(Base):
+    """登录历史记录。"""
+
+    __tablename__ = "login_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    username: Mapped[str] = mapped_column(String(64))
+    ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    success: Mapped[bool] = mapped_column(Boolean, default=False)
+    reason: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 class VerificationCode(Base):

@@ -163,3 +163,59 @@ out/
 # OS
 .DS_Store
 Thumbs.db
+
+# Agent session data
+agent-transcripts/
+memory/
+terminals/
+scripts/
+
+# Cursor
+.cursor/
+.openclaw/
+
+# Backend test venv
+backend/venv_test/
+
+# Temporary deployment/test scripts in root
+/*.py
+/*.sh
+/*.bat
+/*.ps1
+/*.txt
+/*.png
+/*.html
+/*.sql
+
+# Temporary markdown docs in root (not docs/)
+/BOOTSTRAP.md
+/COMPLETE_DEPLOYMENT_TEST.py
+/DEPLOYMENT_*.md
+/FINAL_*.md
+/QUICK_*.md
+/READY_*.md
+/SERVER_*.md
+/SIMPLE_*.md
+/UPLOAD_TO_GITHUB.md
+/USER_NEXT_STEPS.md
+/WORK_COMPLETION_REPORT.md
+/deployment_checklist.md
+/deployment_guide.md
+/docker_cleanup_report.md
+/email_phone_cleanup_final_report.md
+/final_cleanup_summary.md
+/final_system_status_report.md
+/frontend_testing_summary.md
+/safe_deployment_plan.md
+/system_resource_analysis.md
+/top_resource_files.md
+/代码审查与部署测试计划.md
+/修改总结.md
+/修改计划.md
+/部署执行检查清单.md
+/部署测试执行指南.md
+/部署说明.md
+/项目文档索引.md
+
+# Deployment configs (generated)
+deployment_configs/

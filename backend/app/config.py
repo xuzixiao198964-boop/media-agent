@@ -1,100 +1,78 @@
-from pydantic_settings import BaseSettings
-from typing import List, Optional
-import os
+from functools import lru_cache
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Settings(BaseSettings):
-    """应用配置"""
-    
-    # 应用配置
-    APP_NAME: str = "Media Agent"
-    APP_VERSION: str = "1.0.0"
-    DEBUG: bool = False
-    ENVIRONMENT: str = "production"
-    
-    # 数据库配置
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost/media_agent"
-    
-    # Redis配置
-    REDIS_URL: str = "redis://localhost:6379/0"
-    REDIS_DB: int = 0
-    
-    # JWT配置
-    ACCESS_TOKEN_SECRET: str = "your_access_token_secret_key_here_change_in_production"
-    REFRESH_TOKEN_SECRET: str = "your_refresh_token_secret_key_here_change_in_production"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
-    ALGORITHM: str = "HS256"
-    
-    # 密码安全配置
-    BCRYPT_ROUNDS: int = 12
-    PASSWORD_MIN_LENGTH: int = 12
-    PASSWORD_MAX_LENGTH: int = 128
-    
-    # 登录限制配置
-    LOGIN_ATTEMPTS_PER_IP: int = 5
-    LOGIN_ATTEMPTS_PER_USER: int = 3
-    LOGIN_BLOCK_TIME_MINUTES: int = 15
-    
-    # 文件上传配置
-    MAX_UPLOAD_SIZE: int = 2147483648  # 2GB
-    CHUNK_SIZE: int = 5242880  # 5MB
-    ALLOWED_VIDEO_FORMATS: List[str] = ["mp4", "mov", "avi", "mkv", "flv", "wmv", "webm", "mpeg", "mpg"]
-    
-    # 存储路径配置
-    VIDEO_STORAGE_PATH: str = "/var/media/videos"
-    TEMP_STORAGE_PATH: str = "/var/media/temp"
-    THUMBNAIL_STORAGE_PATH: str = "/var/media/thumbnails"
-    PROCESSED_STORAGE_PATH: str = "/var/media/processed"
-    
-    # AI服务配置
-    DEEPSEEK_API_KEY: Optional[str] = None
-    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
-    DEEPSEEK_MODEL: str = "deepseek-chat"
-    
-    # TTS服务配置
-    AZURE_TTS_KEY: Optional[str] = None
-    AZURE_TTS_REGION: str = "eastasia"
-    GOOGLE_TTS_KEY: Optional[str] = None
-    
-    # 平台API配置
-    YOUTUBE_API_KEY: Optional[str] = None
-    TIKTOK_ACCESS_TOKEN: Optional[str] = None
-    INSTAGRAM_ACCESS_TOKEN: Optional[str] = None
-    BILIBILI_ACCESS_TOKEN: Optional[str] = None
-    
-    # CORS配置
-    CORS_ORIGINS: str = "http://localhost:8001,http://127.0.0.1:8001"
-    
-    # 任务队列配置
-    CELERY_BROKER_URL: str = "redis://localhost:6379/1"
-    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/2"
-    CELERY_TASK_SERIALIZER: str = "json"
-    CELERY_RESULT_SERIALIZER: str = "json"
-    
-    # 监控配置
-    SENTRY_DSN: Optional[str] = None
-    LOG_LEVEL: str = "INFO"
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-# 创建配置实例
-settings = Settings()
+    app_name: str = "Media Agent"
+    secret_key: str = "change-me-in-production-use-long-random"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+    max_sessions_per_user: int = 3
+    api_v1_prefix: str = "/api/v1"
 
-# 创建必要的目录
-def create_directories():
-    """创建必要的存储目录"""
-    directories = [
-        settings.VIDEO_STORAGE_PATH,
-        settings.TEMP_STORAGE_PATH,
-        settings.THUMBNAIL_STORAGE_PATH,
-        settings.PROCESSED_STORAGE_PATH,
-    ]
-    
-    for directory in directories:
-        os.makedirs(directory, exist_ok=True)
+    database_url: str = "postgresql+asyncpg://media:media@localhost:5432/media_agent"
+    cors_origins: str = "*"
 
-# 初始化时创建目录
-if settings.ENVIRONMENT == "development":
-    create_directories()
+    redis_url: str = "redis://localhost:6379/0"
+
+    upload_dir: str = "/data/uploads"
+    output_dir: str = "/data/outputs"
+    # 留空则自动使用「项目根/frontend/dist」（裸机 /opt/media-agent 布局）；仅 API 时可不构建前端
+    frontend_dist_dir: str = ""
+    # 可选：背景音乐文件路径（用于「口播+BGM」「纯 BGM」模式混音/铺底）
+    default_bgm_path: str = "/data/default_bgm.mp3"
+
+    deepseek_api_key: str = ""
+    gemini_api_key: str = ""
+    openai_api_key: str = ""
+    openai_tts_model: str = "gpt-4o-mini-tts"
+    openai_tts_voice: str = "alloy"
+    tencent_tts_secret_id: str = ""
+    tencent_tts_secret_key: str = ""
+    tencent_tts_region: str = "ap-guangzhou"
+    tencent_tts_voice_type: int = 101001
+
+    # TRTC 声音克隆（VoiceClone）/ TRTC 语音合成（TextToSpeech）
+    trtc_sdk_app_id: str = ""  # TRTC SdkAppID（整数也可用字符串存）
+    trtc_secret_id: str = ""
+    trtc_secret_key: str = ""
+    trtc_region: str = "ap-guangzhou"
+
+    # 阿里云百炼 Model Studio（VideoRetalk / 声动人像口型替换）API Key
+    dashscope_api_key: str = ""
+    # 默认使用更低成本的分辨率
+    videoretalk_resolution: str = "480P"
+
+    # 给阿里云抓取 input.video_url/input.audio_url 用的公网访问基址
+    # 你的站点前端/静态文件由 Nginx 监听在 8080
+    public_base_url: str = "http://104.244.90.202:9090"
+
+    publish_mode: str = "mock"
+
+    rss_fetch_interval_seconds: int = 300
+    status_poll_hint_seconds: int = 15
+    # 关闭后必须登录（注册/验证码流程）；开发可临时 True 免登录
+    single_user_mode: bool = False
+    # 开发调试用：在接口响应中返回验证码（生产务必 False）
+    auth_dev_expose_codes: bool = False
+    # 连续密码登录失败达到此次数后，必须完成图形验证码（算术题）
+    login_fail_captcha_threshold: int = 3
+
+    # 邮件（找回密码/注册验证码）；留空则仅写 flow_logs
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+    smtp_use_tls: bool = True
+    # 短信网关标识；留空则仅写 flow_logs
+    sms_provider: str = ""
+    # 是否启用短信验证码（注册/登录/找回）；False 时仅邮箱验证码
+    sms_enabled: bool = False
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()

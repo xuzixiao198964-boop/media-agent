@@ -1,192 +1,124 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Form, Input, Button, Card, Typography, Alert, Space, Checkbox } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { login } from '../api/auth';
-import { useAuthStore } from '../stores/authStore';
+import { FormEvent, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import PublicHeader from "../components/PublicHeader";
+import { API_PREFIX, api } from "../api";
+import { touchActivity } from "../session";
 
-const { Title, Text } = Typography;
+type LoginResp = { access_token?: string; refresh_token?: string; detail?: string; requires_captcha?: boolean };
+type CaptchaResp = { captcha_id: string; image_base64: string };
 
-interface LoginFormData {
-  username: string;
-  password: string;
-  remember: boolean;
-}
+export default function LoginPage() {
+  const nav = useNavigate();
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [captchaRequired, setCaptchaRequired] = useState(false);
+  const [captchaId, setCaptchaId] = useState("");
+  const [captchaImg, setCaptchaImg] = useState("");
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
 
-const LoginPage: React.FC = () => {
-  const navigate = useNavigate();
-  const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const setToken = useAuthStore((state) => state.setToken);
-  const setRememberMe = useAuthStore((state) => state.setRememberMe);
-
-  const onFinish = async (values: LoginFormData) => {
-    setLoading(true);
-    setError(null);
-
+  async function loadCaptcha() {
     try {
-      // 调用登录API
-      const response = await login({
-        username: values.username,
-        password: values.password,
-      });
+      const r = await api<CaptchaResp>("/auth/captcha");
+      setCaptchaId(r.captcha_id);
+      setCaptchaImg(r.image_base64);
+      setCaptchaAnswer("");
+    } catch {
+      /* ignore */
+    }
+  }
 
-      if (response.access_token) {
-        // 保存令牌
-        setToken(
-          response.access_token,
-          response.refresh_token
-        );
-
-        // 保存记住我设置
-        setRememberMe(values.remember);
-
-        // 跳转到首页
-        navigate('/dashboard');
-      } else {
-        setError('登录失败');
+  async function submitPassword(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    const body: Record<string, unknown> = {
+      login: login.trim(),
+      password,
+    };
+    if (captchaRequired && captchaId) {
+      body.captcha_id = captchaId;
+      body.captcha_answer = captchaAnswer;
+    }
+    const res = await fetch(`${API_PREFIX}/auth/login/password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as LoginResp;
+    if (!res.ok) {
+      setErr(typeof data.detail === "string" ? data.detail : `登录失败 ${res.status}`);
+      if (data.requires_captcha) {
+        setCaptchaRequired(true);
+        loadCaptcha();
       }
-    } catch (err: any) {
-      const errorDetail = err.response?.data?.detail;
-      
-      if (errorDetail === '用户名或密码错误') {
-        setError('用户名或密码错误');
-      } else if (errorDetail?.includes('锁定')) {
-        setError('账户已被锁定，请稍后再试');
-      } else if (errorDetail?.includes('限制')) {
-        setError('登录失败次数过多，请稍后再试');
-      } else {
-        setError(errorDetail || '登录失败，请稍后重试');
-      }
-    } finally {
-      setLoading(false);
+      return;
     }
-  };
-
-  const validateUsername = (_: any, value: string) => {
-    if (!value) {
-      return Promise.reject('请输入用户名');
+    if (!data.access_token) {
+      setErr("登录响应异常");
+      return;
     }
-    
-    // 用户名规则：3-64字符，只允许字母、数字、下划线
-    const usernameRegex = /^[a-zA-Z0-9_]{3,64}$/;
-    if (!usernameRegex.test(value)) {
-      return Promise.reject('用户名格式不正确');
+    localStorage.setItem("token", data.access_token);
+    if (data.refresh_token) {
+      localStorage.setItem("refresh_token", data.refresh_token);
     }
-    
-    return Promise.resolve();
-  };
+    touchActivity();
+    nav("/");
+  }
 
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      backgroundColor: '#f0f2f5',
-      padding: '20px'
-    }}>
-      <Card style={{ width: 400, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-        <div style={{ textAlign: 'center', marginBottom: 24 }}>
-          <Title level={2}>登录账号</Title>
-          <Text type="secondary">欢迎回到 Media Agent</Text>
-        </div>
-
-        {error && (
-          <Alert
-            message={error}
-            type="error"
-            showIcon
-            style={{ marginBottom: 24 }}
-            closable
-            onClose={() => setError(null)}
-          />
-        )}
-
-        <Form
-          form={form}
-          name="login"
-          initialValues={{ remember: true }}
-          onFinish={onFinish}
-          layout="vertical"
-          size="large"
-        >
-          <Form.Item
-            name="username"
-            label="用户名"
-            rules={[
-              { required: true, message: '请输入用户名' },
-              { validator: validateUsername }
-            ]}
-          >
-            <Input
-              prefix={<UserOutlined />}
-              placeholder="请输入用户名"
-              autoComplete="username"
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="password"
-            label="密码"
-            rules={[
-              { required: true, message: '请输入密码' }
-            ]}
-          >
-            <Input.Password
-              prefix={<LockOutlined />}
-              placeholder="请输入密码"
+    <div className="layout public-layout">
+      <PublicHeader active="login" />
+      <main>
+        <div className="card" data-testid="login-card" style={{ maxWidth: 440, margin: "48px auto" }}>
+          <h2 style={{ marginTop: 0 }}>登录</h2>
+          <form onSubmit={submitPassword}>
+            <p className="muted">使用用户名和密码登录</p>
+            <label className="muted">用户名</label>
+            <input value={login} onChange={(e) => setLogin(e.target.value)} required autoComplete="username" />
+            <div style={{ height: 10 }} />
+            <label className="muted">密码</label>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type="password"
+              required
               autoComplete="current-password"
             />
-          </Form.Item>
-
-          <Form.Item>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Form.Item name="remember" valuePropName="checked" noStyle>
-                <Checkbox>记住我</Checkbox>
-              </Form.Item>
-              
-              <Link to="/forgot-password">
-                <Button type="link" style={{ padding: 0 }}>
-                  忘记密码？
-                </Button>
-              </Link>
-            </div>
-          </Form.Item>
-
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              block
-              size="large"
-            >
+            {captchaRequired && captchaImg && (
+              <>
+                <div style={{ height: 10 }} />
+                <label className="muted">验证码</label>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    value={captchaAnswer}
+                    onChange={(e) => setCaptchaAnswer(e.target.value)}
+                    required
+                    style={{ flex: 1 }}
+                    placeholder="请输入验证码"
+                  />
+                  <img
+                    src={`data:image/png;base64,${captchaImg}`}
+                    alt="验证码"
+                    style={{ height: 40, cursor: "pointer", borderRadius: 4 }}
+                    onClick={loadCaptcha}
+                    title="点击刷新"
+                  />
+                </div>
+              </>
+            )}
+            {err && <p style={{ color: "var(--danger)" }}>{err}</p>}
+            <div style={{ height: 12 }} />
+            <button className="primary" type="submit">
               登录
-            </Button>
-          </Form.Item>
-
-          <div style={{ textAlign: 'center' }}>
-            <Space>
-              <Text>还没有账号？</Text>
-              <Link to="/register">
-                <Button type="link" style={{ padding: 0 }}>
-                  立即注册
-                </Button>
-              </Link>
-            </Space>
-          </div>
-        </Form>
-
-        <div style={{ marginTop: 24, paddingTop: 16, borderTop: '1px solid #f0f0f0' }}>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            安全提示：请勿在公共设备上勾选"记住我"，定期修改密码以确保账户安全。
-          </Text>
+            </button>
+          </form>
+          <p className="muted" style={{ marginTop: 16 }}>
+            <Link to="/register">注册</Link>
+            {" · "}
+            <Link to="/forgot-password">忘记密码</Link>
+          </p>
         </div>
-      </Card>
+      </main>
     </div>
   );
-};
-
-export default LoginPage;
+}

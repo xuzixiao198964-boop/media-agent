@@ -5,7 +5,9 @@ from pydantic import BaseModel, Field
 
 class TokenOut(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
+    expires_in: int = 1800
 
 
 class UserOut(BaseModel):
@@ -29,7 +31,6 @@ class SendCodesOut(BaseModel):
 
 
 class AuthFeaturesOut(BaseModel):
-    """前端用于展示/隐藏短信相关表单项。"""
     sms_enabled: bool = False
 
 
@@ -49,21 +50,32 @@ class LoginPasswordIn(BaseModel):
     captcha_answer: Optional[str] = None
 
 
-class SendLoginCodeIn(BaseModel):
-    target: str = Field(..., description="邮箱或 11 位手机号")
-    channel: str = Field(..., pattern="^(email|phone)$")
+class RefreshTokenIn(BaseModel):
+    refresh_token: str
 
 
-class LoginCodeIn(BaseModel):
-    target: str
-    channel: str = Field(..., pattern="^(email|phone)$")
-    code: str = Field(min_length=4, max_length=8)
-
-
-class SendResetCodesIn(BaseModel):
-    username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
+class ChangePasswordIn(BaseModel):
+    old_password: str
+    new_password: str = Field(min_length=10, max_length=128)
 
 
 class PasswordResetIn(BaseModel):
     username: str = Field(min_length=3, max_length=64, pattern=r"^[a-zA-Z0-9_]+$")
     new_password: str = Field(min_length=10, max_length=128)
+
+
+class SessionOut(BaseModel):
+    id: int
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: str
+    is_current: bool = False
+
+
+class LoginHistoryOut(BaseModel):
+    id: int
+    username: str
+    ip_address: Optional[str] = None
+    success: bool
+    reason: Optional[str] = None
+    created_at: str

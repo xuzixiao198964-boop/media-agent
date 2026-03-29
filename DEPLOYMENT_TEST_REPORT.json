@@ -1,0 +1,334 @@
+{
+  "project": "Media Agent",
+  "version": "v1.0.0",
+  "test_date": "2026-03-26 22:11:56",
+  "test_duration": "3.63秒",
+  "test_results": [
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "============================================================"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "开始完整的部署测试"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "============================================================"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行测试: 环境检查"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "开始环境检查..."
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: deploy_to_server.sh"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: deploy_to_server.bat"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: test_auth_module.py"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: test_config.py"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: backend/requirements.txt"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: backend/app/main.py"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: backend/app/config.py"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: backend/app/models.py"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: backend/app/schemas/auth.py"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文件存在: backend/app/api/auth.py"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "测试通过: 环境检查"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行测试: 部署脚本验证"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "验证部署脚本..."
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "部署脚本检查通过: Shebang正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "部署脚本检查通过: 项目名称正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "部署脚本检查通过: 服务器地址正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "部署脚本检查通过: 版本标签正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "部署脚本检查通过: 服务启动命令正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "ERROR",
+      "message": "部署脚本检查失败: 健康检查正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "ERROR",
+      "message": "测试失败: 部署脚本验证"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行测试: 服务配置验证"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "验证服务配置..."
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "服务配置文件有效: media-agent-backend.service"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "服务配置文件有效: media-agent-celery.service"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "服务配置文件有效: nginx-media-agent.conf"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "测试通过: 服务配置验证"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行测试: 单元测试执行"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行单元测试..."
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "单元测试执行成功"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "WARNING",
+      "message": "单元测试可能失败"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "ERROR",
+      "message": "测试失败: 单元测试执行"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行测试: 文档完整性验证"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "验证文档完整性..."
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文档存在且完整: docs/Media-Agent-最终版需求说明书.md (56810字节)"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文档存在且完整: docs/Media-Agent-概要设计文档.md (62476字节)"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文档存在且完整: docs/Media-Agent-单元测试文档.md (14947字节)"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文档存在且完整: docs/Media-Agent-集成测试文档.md (16250字节)"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "文档存在且完整: docs/Media-Agent-需求文档评审意见.md (13352字节)"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "测试通过: 文档完整性验证"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行测试: 代码质量检查"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "检查代码质量..."
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "代码简化检查通过: 用户名字段正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "代码简化检查通过: 密码哈希正确"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "WARNING",
+      "message": "代码简化检查失败: 用户模型简化"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "代码简化检查通过: 登录简化注释"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "代码简化检查通过: 注册简化注释"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "SUCCESS",
+      "message": "测试通过: 代码质量检查"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "执行测试: 部署流程模拟"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "模拟部署流程..."
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "部署流程模拟开始"
+    },
+    {
+      "timestamp": "22:11:52",
+      "status": "INFO",
+      "message": "步骤: 环境检查 - 检查Python、Git、Node.js等工具"
+    },
+    {
+      "timestamp": "22:11:53",
+      "status": "INFO",
+      "message": "步骤: 代码获取 - 从GitHub获取v1.0.0代码"
+    },
+    {
+      "timestamp": "22:11:53",
+      "status": "INFO",
+      "message": "步骤: 后端安装 - 创建虚拟环境，安装Python依赖"
+    },
+    {
+      "timestamp": "22:11:54",
+      "status": "INFO",
+      "message": "步骤: 前端安装 - 安装Node.js依赖，构建前端"
+    },
+    {
+      "timestamp": "22:11:54",
+      "status": "INFO",
+      "message": "步骤: 数据库配置 - 配置PostgreSQL数据库"
+    },
+    {
+      "timestamp": "22:11:55",
+      "status": "INFO",
+      "message": "步骤: 服务配置 - 配置systemd服务"
+    },
+    {
+      "timestamp": "22:11:55",
+      "status": "INFO",
+      "message": "步骤: 测试验证 - 运行健康检查和注册测试"
+    },
+    {
+      "timestamp": "22:11:56",
+      "status": "SUCCESS",
+      "message": "部署流程模拟完成"
+    },
+    {
+      "timestamp": "22:11:56",
+      "status": "SUCCESS",
+      "message": "测试通过: 部署流程模拟"
+    }
+  ],
+  "summary": {
+    "total_tests": 7,
+    "passed_tests": 34,
+    "failed_tests": 3,
+    "warnings": 2
+  }
+}

@@ -1,93 +1,46 @@
-# Media Agent 项目
-
-## 项目概述
-Media Agent 是一个自动化内容生成和发布平台，能够将资讯自动转换为短视频并发布到多个平台。
-
-## 核心功能
-1. **用户认证管理** - 简化的注册登录（仅用户名+密码）
-2. **资讯抓取** - RSS源管理，网页内容抓取和清洗
-3. **视频处理** - 视频上传、转码、编辑、合成
-4. **AI内容生成** - 使用DeepSeek模型生成文案、语音、视频
-5. **发布管理** - 多平台内容发布和监控
-
-## 技术栈
-### 后端
-- **框架**: FastAPI (Python 3.9+)
-- **数据库**: PostgreSQL 13+
-- **缓存/队列**: Redis 6+
-- **任务队列**: Celery
-- **ORM**: SQLAlchemy + Async
-- **认证**: JWT + bcrypt
-
-### 前端
-- **框架**: React 18 + TypeScript
-- **构建工具**: Vite
-- **路由**: React Router v6
-- **状态管理**: Zustand
-- **UI组件**: Ant Design
-- **HTTP客户端**: Axios
-
-## 项目结构
-```
-media-agent/
-├── docs/                    # 项目文档
-├── backend/               # 后端代码（FastAPI）
-├── frontend/             # 前端代码（React + TypeScript）
-├── README.md            # 项目说明
-└── .gitignore          # Git忽略配置
-```
-
-## 文档说明
-- **需求文档**: 完整的功能性能需求说明
-- **设计文档**: 系统架构和详细设计
-- **部署指南**: 完整的部署步骤和配置
-
-## 最新更新
-### 2026-03-26
-1. **需求文档更新**：
-   - 创建最终版需求说明书
-   - 明确AI模型仅使用DeepSeek系列
-   - 性能要求根据服务器性能动态确定
-   - 增加任务队列总等待时间要求
-
-2. **设计文档完成**：
-   - 完成概要设计文档
-   - 完成详细设计文档
-
-3. **代码更新**：
-   - 简化认证功能（移除邮箱、手机号、验证码）
-   - 更新前端注册登录页面
-   - 更新后端认证API
-
-## 快速开始
+# Media Agent（资讯 → 短视频 → 发布）
+项目位于 `d:\work\media-agent`，提供：
+- **RSS 资讯抓取**（可配置栏目与源，定时 + 手动触发）
+- **真人视频上传**（多格式、预览、与栏目可选关联）
+- **生成流水线**：DeepSeek（可选）撰稿 → OpenAI TTS 或 Edge TTS（失败则静音兜底）→ FFmpeg 合成 9:16 成片
+- **发布适配器**：默认 `mock`（验证状态与日志）；真实平台需各开放平台资质后在 `backend/app/services/publisher.py` 扩展
+- **响应式 Web**：PC/浏览器可用
+- **流程日志**：`FlowLog` 表 + 前端查看
+详细 **API 选型与官方开通地址** 见 [docs/API-SELECTION.md](docs/API-SELECTION.md)。
+## 前端单元测试
+在 `frontend` 目录：
 ```bash
-# 克隆项目
-git clone https://github.com/xuzixiao198964-boop/media-agent.git
-cd media-agent
-
-# 后端
-cd backend
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-
-# 前端
 cd frontend
 npm install
-npm run dev
+npm test
 ```
-
-## 开发进度
-- [x] 需求分析文档
-- [x] 概要设计文档
-- [x] 详细设计文档
-- [x] 认证功能简化实现
-- [ ] AI内容生成模块
-- [ ] 发布管理模块
-- [ ] 系统测试和部署
-
-## 许可证
-MIT License
-
-## 联系方式
-项目仓库: https://github.com/xuzixiao198964-boop/media-agent.git
-创建日期: 2026-03-26
+使用 Vitest + Testing Library，覆盖会话超时、`api()` 行为、路由守卫与公共头组件等。
+### 登录自测（与 `scripts/verify_login_http.py` 一致）
+服务器上若已跑过 `verify_e2e.py`，会存在种子账号（密码强度符合策略）：
+- 用户名：`e2e_verify`
+- 密码：`E2e_test_pass_1`
+也可用「注册」页自行注册。若多次输错密码，需按页面提示完成图形后再登录。
+## 本地 / 服务器一键编排
+本项目当前使用裸机部署方式（不依赖 Docker）。
+- API：默认监听 `9090`（`http://服务器IP:9090/health`）
+- Web：由 nginx 提供静态与反代，默认 `8080`（`http://服务器IP:8080`）
+如果需要重新部署，可以直接运行裸机脚本（密钥请通过环境变量传入）：
+```bash
+$env:MEDIA_AGENT_SSH_PASS='你的SSH密码'
+python scripts/bare_deploy_steps.py
+```
+## 端到端验证（裸机）
+在服务器上：
+```bash
+cd /opt/media-agent/backend
+PYTHONPATH=/opt/media-agent/backend MEDIA_AGENT_BASE=http://127.0.0.1:9090 /opt/media-agent/venv/bin/python scripts/verify_e2e.py
+```
+脚本将：注册账号 → 触发 RSS → 生成测试 MP4 并上传 → 创建生成任务 → 等待完成 → mock 发布 → 检查日志。
+## 环境变量（节选）
+见 `backend` 目录下可自建 `.env`（也可通过 systemd 环境变量注入）；常用变量：
+- `SECRET_KEY`：JWT 与 Fernet 加密根密钥（**生产务必更换**）
+- `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `GEMINI_API_KEY`：可选
+- `PUBLISH_MODE`：默认 `mock`
+## 安全说明
+- **切勿**在仓库或聊天中明文保存服务器密码与 API 密钥；部署脚本仅通过环境变量读取 SSH 密码。
+- 若密钥曾泄露，请立即**轮换**。
