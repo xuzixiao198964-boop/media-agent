@@ -26,6 +26,7 @@ celery_app = Celery(
     broker=settings.redis_url,
     backend=settings.redis_url,
 )
+celery_app.conf.include = ["app.novel_tasks"]
 
 
 @celery_app.task(name="fetch_all_categories")

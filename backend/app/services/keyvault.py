@@ -39,12 +39,14 @@ def get_provider_key_sync(db: Session, provider: str) -> str:
         "tencent_tts_secret_id": settings.tencent_tts_secret_id,
         "tencent_tts_secret_key": settings.tencent_tts_secret_key,
         "trtc_sdk_app_id": settings.trtc_sdk_app_id,
-        # 合并逻辑：用户只需输入一套腾讯云 SecretId/SecretKey
-        # 如果 TRTC 专用字段为空，则别名到 tencent_tts 的 SecretId/SecretKey
         "trtc_secret_id": settings.trtc_secret_id or settings.tencent_tts_secret_id,
         "trtc_secret_key": settings.trtc_secret_key or settings.tencent_tts_secret_key,
         "trtc_region": settings.trtc_region or settings.tencent_tts_region,
         "dashscope_api_key": settings.dashscope_api_key,
+        "fish_audio_api_key": settings.fish_audio_api_key,
+        "siliconflow_api_key": settings.siliconflow_api_key,
+        "kling_access_key": settings.kling_access_key,
+        "kling_secret_key": settings.kling_secret_key,
     }
     v = env_map.get(provider, "") or ""
     if v.strip():

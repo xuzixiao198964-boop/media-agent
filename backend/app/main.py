@@ -6,12 +6,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from app.api import articles, auth, categories, logs, pipeline, publish, settings_api, status, videos, voiceprints
+from app.api import articles, auth, categories, logs, novel, pipeline, publish, settings_api, status, videos, voiceprints
 from app.config import get_settings
 from sqlalchemy import func, select, text
 
 from app.database import AsyncSessionLocal, Base, engine
-from app.models import Category, UserSession, LoginHistory  # noqa: F401
+from app.models import (  # noqa: F401
+    Category, UserSession, LoginHistory,
+    NovelProject, NovelCharacter, NovelChapter, ChapterReview, BgmLibrary,
+)
 
 DEFAULT_CATEGORIES = [
     {
@@ -37,6 +40,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
     Path(settings.output_dir).mkdir(parents=True, exist_ok=True)
+    Path(settings.novel_assets_dir).mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         # 已有库表结构增量补丁（create_all 不会自动加列）
@@ -127,6 +131,7 @@ app.include_router(status.router, prefix=prefix)
 app.include_router(logs.router, prefix=prefix)
 app.include_router(settings_api.router, prefix=prefix)
 app.include_router(voiceprints.router, prefix=prefix)
+app.include_router(novel.router, prefix=prefix)
 
 uploads = Path(get_settings().upload_dir)
 outputs = Path(get_settings().output_dir)

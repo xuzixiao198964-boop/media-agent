@@ -60,6 +60,22 @@ class Settings(BaseSettings):
     # 连续密码登录失败达到此次数后，必须完成图形验证码（算术题）
     login_fail_captcha_threshold: int = 3
 
+    # ── 小说视频生成 ──
+    # ai-novel-agent 服务地址
+    novel_agent_base_url: str = "http://104.244.90.202:9000"
+    # Fish Audio 多角色 TTS
+    fish_audio_api_key: str = ""
+    fish_audio_base_url: str = "https://api.fish.audio"
+    # 硅基流动 AI 图片生成
+    siliconflow_api_key: str = ""
+    siliconflow_base_url: str = "https://api.siliconflow.cn"
+    siliconflow_model: str = "black-forest-labs/FLUX.1-schnell"
+    # 可灵 AI 视频生成
+    kling_access_key: str = ""
+    kling_secret_key: str = ""
+    # 小说素材存储目录
+    novel_assets_dir: str = "/data/novel_assets"
+
     # 邮件（找回密码/注册验证码）；留空则仅写 flow_logs
     smtp_host: str = ""
     smtp_port: int = 587

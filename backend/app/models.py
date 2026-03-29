@@ -199,3 +199,98 @@ class VerificationCode(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+# ── 小说视频生成系统模型 ──────────────────────────────────────
+
+
+class NovelProject(Base):
+    __tablename__ = "novel_projects"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    novel_slug: Mapped[str] = mapped_column(String(256), index=True)
+    novel_title: Mapped[str] = mapped_column(String(512))
+    novel_author: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    novel_intro: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    cover_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    narrator_voice_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    visual_style: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    default_bgm_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bgm_library.id"), nullable=True)
+    video_orientation: Mapped[str] = mapped_column(String(16), default="portrait")  # portrait / landscape
+    status: Mapped[str] = mapped_column(String(32), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    characters: Mapped[list["NovelCharacter"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    chapters: Mapped[list["NovelChapter"]] = relationship(back_populates="project", cascade="all, delete-orphan")
+
+
+class NovelCharacter(Base):
+    __tablename__ = "novel_characters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("novel_projects.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    gender: Mapped[str] = mapped_column(String(16), default="neutral")  # male / female / neutral
+    voice_id: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    voice_sample_url: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    personality: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    appearance: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    project: Mapped["NovelProject"] = relationship(back_populates="characters")
+
+
+class NovelChapter(Base):
+    __tablename__ = "novel_chapters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    project_id: Mapped[int] = mapped_column(ForeignKey("novel_projects.id"), index=True)
+    chapter_no: Mapped[int] = mapped_column(Integer)
+    title: Mapped[str] = mapped_column(String(512))
+    raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    script: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    script_status: Mapped[str] = mapped_column(String(32), default="pending")  # pending/draft/reviewing/approved/rejected
+    script_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    video_status: Mapped[str] = mapped_column(String(32), default="pending")  # pending/generating/compositing/reviewing/approved/rejected/published
+    video_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    output_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    audio_assets: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    visual_assets: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    bgm_id: Mapped[Optional[int]] = mapped_column(ForeignKey("bgm_library.id"), nullable=True)
+    bgm_volume: Mapped[float] = mapped_column(Float, default=0.15)
+    estimated_duration: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    actual_duration: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    project: Mapped["NovelProject"] = relationship(back_populates="chapters")
+
+
+class ChapterReview(Base):
+    __tablename__ = "chapter_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    chapter_id: Mapped[int] = mapped_column(ForeignKey("novel_chapters.id"), index=True)
+    review_stage: Mapped[str] = mapped_column(String(16))  # script / video
+    review_round: Mapped[int] = mapped_column(Integer, default=1)
+    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending / approved / rejected
+    reviewer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    items: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class BgmLibrary(Base):
+    __tablename__ = "bgm_library"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    name: Mapped[str] = mapped_column(String(256))
+    mood: Mapped[str] = mapped_column(String(32), default="peaceful")
+    file_path: Mapped[str] = mapped_column(String(1024))
+    duration_sec: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="custom")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
