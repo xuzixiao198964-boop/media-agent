@@ -11,6 +11,9 @@ import OutputsPage from "./pages/OutputsPage";
 import PublishPage from "./pages/PublishPage";
 import LogsPage from "./pages/LogsPage";
 import SettingsPage from "./pages/SettingsPage";
+import NovelProjectsPage from "./pages/NovelProjectsPage";
+import NovelProjectDetailPage from "./pages/NovelProjectDetailPage";
+import NovelChapterPage from "./pages/NovelChapterPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
@@ -54,6 +57,9 @@ function Layout({ children }: { children: ReactNode }) {
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "active" : "")} to="/logs">
             日志
+          </NavLink>
+          <NavLink className={({ isActive }) => (isActive ? "active" : "")} to="/novel">
+            小说视频
           </NavLink>
           <NavLink className={({ isActive }) => (isActive ? "active" : "")} to="/settings">
             API
@@ -152,6 +158,30 @@ export default function App() {
         element={
           <Private>
             <SettingsPage />
+          </Private>
+        }
+      />
+      <Route
+        path="/novel"
+        element={
+          <Private>
+            <NovelProjectsPage />
+          </Private>
+        }
+      />
+      <Route
+        path="/novel/:projectId"
+        element={
+          <Private>
+            <NovelProjectDetailPage />
+          </Private>
+        }
+      />
+      <Route
+        path="/novel/:projectId/chapter/:chapterId"
+        element={
+          <Private>
+            <NovelChapterPage />
           </Private>
         }
       />

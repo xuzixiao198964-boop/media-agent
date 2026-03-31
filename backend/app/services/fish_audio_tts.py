@@ -18,12 +18,19 @@ EDGE_VOICE_MAP = {
     "female": "zh-CN-XiaohanNeural",
 }
 
+FISH_DEFAULT_VOICES = {
+    "narrator_female": "54a5170264694bfc8e9ad98df7bd89c3",
+    "narrator_male": "7f92f8afb8ec43bf81429cc1c9199cb1",
+    "female": "e4642e5edccd4d9ab61a69e82d4f8a14",
+    "male": "7f92f8afb8ec43bf81429cc1c9199cb1",
+}
+
 
 def synthesize_fish(
     api_key: str,
     text: str,
     out_path: Path,
-    model_id: str = "d8639b5c-9e6b-4a1b-a357-e9f1a10c6c1e",
+    model_id: str = "54a5170264694bfc8e9ad98df7bd89c3",
     *,
     format: str = "mp3",
 ) -> None:
@@ -69,9 +76,13 @@ def synthesize_scene(
     """为单个 scene 合成语音。优先 Fish Audio，无 key 则 Edge TTS。"""
     api_key = get_provider_key_sync(db, "fish_audio_api_key")
 
-    if api_key and voice_id:
+    if api_key:
+        mid = voice_id
+        if not mid:
+            hint = f"narrator_{gender}" if is_narrator else gender
+            mid = FISH_DEFAULT_VOICES.get(hint, FISH_DEFAULT_VOICES["narrator_female"])
         try:
-            synthesize_fish(api_key, text, out_path, model_id=voice_id)
+            synthesize_fish(api_key, text, out_path, model_id=mid)
             return
         except Exception:
             pass

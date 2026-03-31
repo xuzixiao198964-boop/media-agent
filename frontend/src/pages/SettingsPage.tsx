@@ -6,6 +6,9 @@ type Status = {
   tencent_tts_configured: boolean;
   trtc_voice_clone_configured: boolean;
   dashscope_configured: boolean;
+  fish_audio_configured: boolean;
+  siliconflow_configured: boolean;
+  seedance_configured: boolean;
   tencent_tts_last_error?: string | null;
   dashscope_last_error?: string | null;
   publish_mode: string;
@@ -19,6 +22,10 @@ export default function SettingsPage() {
   const [trtcSdkAppId, setTrtcSdkAppId] = useState("");
   const [trtcRegion, setTrtcRegion] = useState("ap-guangzhou");
   const [dashscopeApiKey, setDashscopeApiKey] = useState("");
+  const [fishAudioKey, setFishAudioKey] = useState("");
+  const [siliconflowKey, setSiliconflowKey] = useState("");
+  const [seedanceAK, setSeedanceAK] = useState("");
+  const [seedanceSK, setSeedanceSK] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
 
   async function load() {
@@ -44,6 +51,10 @@ export default function SettingsPage() {
           trtc_sdk_app_id: trtcSdkAppId || undefined,
           trtc_region: trtcRegion || undefined,
           dashscope_api_key: dashscopeApiKey || undefined,
+          fish_audio_api_key: fishAudioKey || undefined,
+          siliconflow_api_key: siliconflowKey || undefined,
+          seedance_access_key: seedanceAK || undefined,
+          seedance_secret_key: seedanceSK || undefined,
         }),
       });
       setDeepseek("");
@@ -52,6 +63,10 @@ export default function SettingsPage() {
       setTrtcSdkAppId("");
       setTrtcRegion("ap-guangzhou");
       setDashscopeApiKey("");
+      setFishAudioKey("");
+      setSiliconflowKey("");
+      setSeedanceAK("");
+      setSeedanceSK("");
       await load();
       setMsg("已保存（密钥仅存服务端，前端不展示明文）");
     } catch (e: unknown) {
@@ -107,6 +122,21 @@ export default function SettingsPage() {
             )}
           </div>
           <div className="stat">
+            <div className="k">Fish Audio</div>
+            <div className="v">{st.fish_audio_configured ? "已配置" : "未配置"}</div>
+            <div className="muted" style={{ fontSize: "0.72rem", marginTop: 4 }}>多角色 TTS</div>
+          </div>
+          <div className="stat">
+            <div className="k">硅基流动</div>
+            <div className="v">{st.siliconflow_configured ? "已配置" : "未配置"}</div>
+            <div className="muted" style={{ fontSize: "0.72rem", marginTop: 4 }}>AI 图片生成</div>
+          </div>
+          <div className="stat">
+            <div className="k">Seedance</div>
+            <div className="v">{st.seedance_configured ? "已配置" : "未配置"}</div>
+            <div className="muted" style={{ fontSize: "0.72rem", marginTop: 4 }}>AI 图生视频</div>
+          </div>
+          <div className="stat">
             <div className="k">发布模式</div>
             <div className="v">{st.publish_mode}</div>
           </div>
@@ -138,6 +168,33 @@ export default function SettingsPage() {
 
           <label className="muted">DashScope API Key（VideoRetalk）</label>
           <input value={dashscopeApiKey} onChange={(e) => setDashscopeApiKey(e.target.value)} type="password" autoComplete="off" />
+
+          <div style={{ height: 16, borderTop: "1px solid var(--border)", marginTop: 16 }} />
+          <h4 style={{ margin: "0 0 8px", color: "var(--accent)" }}>小说视频生成 API</h4>
+
+          <label className="muted">Fish Audio API Key（多角色语音合成）</label>
+          <div className="muted" style={{ fontSize: "0.75rem", marginBottom: 4 }}>
+            申请: <a href="https://fish.audio" target="_blank" rel="noreferrer">fish.audio</a> 注册后在 Dashboard 创建 API Key
+          </div>
+          <input value={fishAudioKey} onChange={(e) => setFishAudioKey(e.target.value)} type="password" autoComplete="off" placeholder="不填则使用 Edge TTS 替代" />
+          <div style={{ height: 10 }} />
+
+          <label className="muted">硅基流动 SiliconFlow API Key（AI 图片生成）</label>
+          <div className="muted" style={{ fontSize: "0.75rem", marginBottom: 4 }}>
+            申请: <a href="https://siliconflow.cn" target="_blank" rel="noreferrer">siliconflow.cn</a> 注册后在控制台获取
+          </div>
+          <input value={siliconflowKey} onChange={(e) => setSiliconflowKey(e.target.value)} type="password" autoComplete="off" placeholder="不填则生成纯色占位图" />
+          <div style={{ height: 10 }} />
+
+          <label className="muted">Seedance / 即梦 AI（图生视频，字节跳动 · 火山引擎）</label>
+          <div className="muted" style={{ fontSize: "0.75rem", marginBottom: 4 }}>
+            申请: <a href="https://console.volcengine.com" target="_blank" rel="noreferrer">火山引擎控制台</a> → 方舟大模型 → API Key
+            · 备选：配了硅基流动 Key 也能用 Wan2.1 图生视频
+          </div>
+          <input value={seedanceAK} onChange={(e) => setSeedanceAK(e.target.value)} type="password" autoComplete="off" placeholder="Access Key（或 ark- 开头的 API Key）" />
+          <div style={{ height: 6 }} />
+          <input value={seedanceSK} onChange={(e) => setSeedanceSK(e.target.value)} type="password" autoComplete="off" placeholder="Secret Key（若上方填的是 API Key 则留空）" />
+
           <div style={{ height: 12 }} />
           <button className="primary" type="submit">
             保存

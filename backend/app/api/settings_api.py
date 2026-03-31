@@ -24,6 +24,10 @@ class ApiKeysIn(BaseModel):
     trtc_secret_key: Optional[str] = None
     trtc_region: Optional[str] = None
     dashscope_api_key: Optional[str] = None
+    fish_audio_api_key: Optional[str] = None
+    siliconflow_api_key: Optional[str] = None
+    seedance_access_key: Optional[str] = None
+    seedance_secret_key: Optional[str] = None
 
 
 class ApiKeysStatus(BaseModel):
@@ -32,6 +36,9 @@ class ApiKeysStatus(BaseModel):
     tencent_tts_configured: bool
     trtc_voice_clone_configured: bool
     dashscope_configured: bool
+    fish_audio_configured: bool = False
+    siliconflow_configured: bool = False
+    seedance_configured: bool = False
     tencent_tts_last_error: Optional[str] = None
     dashscope_last_error: Optional[str] = None
     publish_mode: str
@@ -65,11 +72,14 @@ async def keys_status(
             "tencent_tts_secret_id": settings.tencent_tts_secret_id,
             "tencent_tts_secret_key": settings.tencent_tts_secret_key,
             "trtc_sdk_app_id": settings.trtc_sdk_app_id,
-            # 合并逻辑：用户只需输入一套腾讯云 SecretId/SecretKey
             "trtc_secret_id": settings.trtc_secret_id or settings.tencent_tts_secret_id,
             "trtc_secret_key": settings.trtc_secret_key or settings.tencent_tts_secret_key,
             "trtc_region": settings.trtc_region or settings.tencent_tts_region,
             "dashscope_api_key": settings.dashscope_api_key,
+            "fish_audio_api_key": settings.fish_audio_api_key,
+            "siliconflow_api_key": settings.siliconflow_api_key,
+            "seedance_access_key": settings.seedance_access_key,
+            "seedance_secret_key": settings.seedance_secret_key,
         }
         if (env_map.get(provider) or "").strip():
             return True
@@ -90,7 +100,6 @@ async def keys_status(
         deepseek_configured=await has("deepseek"),
         openai_configured=await has("openai"),
         tencent_tts_configured=(await has("tencent_tts_secret_id")) and (await has("tencent_tts_secret_key")),
-        # TRTC 复用同一套腾讯云 SecretId/SecretKey（只需填一次）
         trtc_voice_clone_configured=(
             (await has("tencent_tts_secret_id"))
             and (await has("tencent_tts_secret_key"))
@@ -98,6 +107,9 @@ async def keys_status(
         and (await has("trtc_sdk_app_id"))
         and (await has("trtc_region")),
         dashscope_configured=await has("dashscope_api_key"),
+        fish_audio_configured=await has("fish_audio_api_key"),
+        siliconflow_configured=await has("siliconflow_api_key"),
+        seedance_configured=(await has("seedance_access_key")) and (await has("seedance_secret_key")),
         tencent_tts_last_error=await latest_api_error("tencent_tts"),
         dashscope_last_error=await latest_api_error("dashscope_videoretalk"),
         publish_mode=settings.publish_mode,
@@ -129,5 +141,13 @@ async def save_keys(
         await _upsert_secret(db, "trtc_region", data.trtc_region)
     if data.dashscope_api_key:
         await _upsert_secret(db, "dashscope_api_key", data.dashscope_api_key)
+    if data.fish_audio_api_key:
+        await _upsert_secret(db, "fish_audio_api_key", data.fish_audio_api_key)
+    if data.siliconflow_api_key:
+        await _upsert_secret(db, "siliconflow_api_key", data.siliconflow_api_key)
+    if data.seedance_access_key:
+        await _upsert_secret(db, "seedance_access_key", data.seedance_access_key)
+    if data.seedance_secret_key:
+        await _upsert_secret(db, "seedance_secret_key", data.seedance_secret_key)
     await db.flush()
     return await keys_status(db, _)

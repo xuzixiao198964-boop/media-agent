@@ -45,8 +45,8 @@ def get_provider_key_sync(db: Session, provider: str) -> str:
         "dashscope_api_key": settings.dashscope_api_key,
         "fish_audio_api_key": settings.fish_audio_api_key,
         "siliconflow_api_key": settings.siliconflow_api_key,
-        "kling_access_key": settings.kling_access_key,
-        "kling_secret_key": settings.kling_secret_key,
+        "seedance_access_key": settings.seedance_access_key,
+        "seedance_secret_key": settings.seedance_secret_key,
     }
     v = env_map.get(provider, "") or ""
     if v.strip():

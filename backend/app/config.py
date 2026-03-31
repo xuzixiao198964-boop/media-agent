@@ -69,10 +69,10 @@ class Settings(BaseSettings):
     # 硅基流动 AI 图片生成
     siliconflow_api_key: str = ""
     siliconflow_base_url: str = "https://api.siliconflow.cn"
-    siliconflow_model: str = "black-forest-labs/FLUX.1-schnell"
-    # 可灵 AI 视频生成
-    kling_access_key: str = ""
-    kling_secret_key: str = ""
+    siliconflow_model: str = "Kwai-Kolors/Kolors"
+    # Seedance 图生视频（字节跳动 · 火山引擎方舟）
+    seedance_access_key: str = ""
+    seedance_secret_key: str = ""
     # 小说素材存储目录
     novel_assets_dir: str = "/data/novel_assets"
 
