@@ -1332,6 +1332,33 @@ class PasswordService:
 | 评审记录 | ChapterReview 表 | review_stage 扩展 prompt/image 类型 |
 | 重试调度 | Celery Task | 异步评审，失败自动重试 |
 
+### 前端图片评审 UI 设计（v1.1 新增）
+
+前端 React SPA 同步适配图片评审流水线，涉及以下页面组件：
+
+```
+NovelProjectDetailPage（章节列表）
+  ├── 章节表格新增「提示词」「图片」两个状态列
+  └── StatusPill 支持 PROMPT_STATUS_LABEL / IMAGE_STATUS_LABEL
+
+NovelChapterPage（章节详情）
+  ├── 概要卡片: 脚本 / 提示词 / 图片 / 视频  四个状态指示器
+  ├── 操作按钮区（五步流水线）
+  │     ① 生成脚本  → ② AI评审提示词  → ③ 生成图片
+  │     → ④ 图片评审  → ⑤ 生成视频
+  │     每步可通过/驳回/重试，含进度提示
+  ├── Tab: 脚本分镜 | 场景图片(新增) | 视频预览 | 审核记录
+  │     场景图片 Tab: 网格展示所有生成的 scene 图片 + 提示词
+  └── 审核记录 Tab: review_stage 支持 script/prompt/image/video
+```
+
+**流程门控**: 视频生成按钮仅在 `image_status === "approved"` 时才显示，前端严格遵循后端流水线顺序。
+
+**数据类型扩展**:
+- `ChapterDetail` 增加: `prompt_status`, `image_status`, `prompt_review_notes`, `image_review_notes`, `image_prompts`, `prompt_review_round`, `image_review_round`
+- `Chapter` (列表) 增加: `prompt_status`, `image_status`
+- `StatusLabel` 组件支持 `type: "prompt" | "image"` 两种新状态类型
+
 ### 部署架构更新
 
 ```

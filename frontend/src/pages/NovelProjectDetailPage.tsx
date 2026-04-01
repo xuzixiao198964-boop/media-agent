@@ -9,9 +9,10 @@ type Project = {
   chapter_count: number; character_count: number;
 };
 type Chapter = {
-  id: number; chapter_no: number; title: string; script_status: string; video_status: string;
+  id: number; chapter_no: number; title: string;
+  script_status: string; prompt_status: string; image_status: string; video_status: string;
   estimated_duration: number | null; actual_duration: number | null; error: string | null;
-  output_path: string | null;
+  output_path: string | null; prompt_review_round: number; image_review_round: number;
 };
 type Character = {
   id: number; name: string; gender: string; voice_id: string | null;
@@ -22,6 +23,19 @@ const SCRIPT_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
   pending: { text: "待生成", cls: "" },
   generating: { text: "生成中", cls: "warn" },
   draft: { text: "待审核", cls: "warn" },
+  approved: { text: "已通过", cls: "ok" },
+  rejected: { text: "已驳回", cls: "err" },
+};
+const PROMPT_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
+  pending: { text: "待评审", cls: "" },
+  reviewing: { text: "评审中", cls: "warn" },
+  approved: { text: "已通过", cls: "ok" },
+  rejected: { text: "已驳回", cls: "err" },
+};
+const IMAGE_STATUS_LABEL: Record<string, { text: string; cls: string }> = {
+  pending: { text: "待生成", cls: "" },
+  generating: { text: "生成中", cls: "warn" },
+  reviewing: { text: "待审核", cls: "warn" },
   approved: { text: "已通过", cls: "ok" },
   rejected: { text: "已驳回", cls: "err" },
 };
@@ -191,10 +205,11 @@ export default function NovelProjectDetailPage() {
               <tr>
                 <th style={{ width: 50 }}>章</th>
                 <th>标题</th>
-                <th>脚本状态</th>
-                <th>视频状态</th>
+                <th>脚本</th>
+                <th>提示词</th>
+                <th>图片</th>
+                <th>视频</th>
                 <th>预估</th>
-                <th>实际</th>
                 <th>操作</th>
               </tr>
             </thead>
@@ -204,9 +219,10 @@ export default function NovelProjectDetailPage() {
                   <td>{ch.chapter_no}</td>
                   <td>{ch.title}</td>
                   <td><StatusPill status={ch.script_status} map={SCRIPT_STATUS_LABEL} /></td>
+                  <td><StatusPill status={ch.prompt_status || "pending"} map={PROMPT_STATUS_LABEL} /></td>
+                  <td><StatusPill status={ch.image_status || "pending"} map={IMAGE_STATUS_LABEL} /></td>
                   <td><StatusPill status={ch.video_status} map={VIDEO_STATUS_LABEL} /></td>
                   <td className="muted">{formatDuration(ch.estimated_duration)}</td>
-                  <td className="muted">{formatDuration(ch.actual_duration)}</td>
                   <td>
                     {ch.error && <span className="pill err" title={ch.error}>错误</span>}
                     {ch.output_path && <span className="pill ok">有成片</span>}

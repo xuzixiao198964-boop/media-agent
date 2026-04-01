@@ -4338,4 +4338,183 @@ video_review  (已有, 人工)
 
 ---
 
-## 11. 实现状态与部署信息 (更新于2026-04-01)\n\n### 10.1 架构实现状态\n所有设计架构已按详细设计文档要求完成实现：\n\n#### 10.1.1 认证系统实现\n- ✅ **JWT双令牌机制**: access_token(30分钟) + refresh_token(7天)\n- ✅ **会话管理**: 最多3个并发会话\n- ✅ **安全特性**: 验证码限流、登录失败锁定、登录历史记录\n- ✅ **测试结果**: 23项API测试全部通过\n\n#### 10.1.2 视频生成系统实现\n- ✅ **7条生成路径**: 全部测试通过\n  1. P1: 资讯+TTS (无口型同步)\n  2. P2: 资讯+TTS+VideoRetalk (测试视频无人脸)\n  3. P3: DeepSeek文案生成\n  4. P4: 直接粘贴口播\n  5. P5: TTS+背景音乐\n  6. P6: 纯BGM模式\n  7. P7: Mock发布\n- ✅ **模块化架构**: TTS、VideoRetalk、BGM、视频合成\n- ✅ **异步处理**: Celery后台任务处理\n\n#### 10.1.3 小说转视频流水线实现\n- ✅ **多阶段流水线**: 小说解析 → 结构化脚本生成 → 多角色TTS → AI图片生成 → AI图片转视频 → FFmpeg视频合成\n- ✅ **AI服务集成**: \n  - DeepSeek: 结构化脚本生成\n  - Fish Audio: 多角色TTS (默认语音映射)\n  - SiliconFlow: 图片生成(Kolors) + I2V(Wan2.2)\n  - Seedance/即梦AI: 备用I2V\n  - Edge TTS: TTS备用方案 (7.2.8+版本)\n- ✅ **端到端测试**: 15场景章节视频生成成功 (16MB/121秒)\n\n### 10.2 部署架构实现\n- **服务器**: 104.244.90.202 (单核2GB VPS)\n- **服务配置**: systemd service media-agent\n- **端口**: 9090\n- **数据库**: PostgreSQL (media_agent数据库)\n- **消息队列**: Redis (Celery broker)\n- **文件存储**: 统一的媒体文件存储机制\n\n### 10.3 性能优化实现\n- ✅ **基于VPS性能设计**: 单核2GB内存限制考虑\n- ✅ **串行处理策略**: 避免并发压力\n- ✅ **轻量级架构**: 最小化资源占用\n- ⚠️ **I2V速度瓶颈**: Wan2.2每场景2-5分钟，15场景总耗时~89分钟\n\n### 10.4 重要技术决策\n1. **模型更新**: SiliconFlow旧模型(FLUX.1-schnell/Wan2.1)已下线 → 换为Kolors/Wan2.2\n2. **依赖管理**: cryptography库锁定44.0.0版本，防止Fernet解密失败\n3. **服务降级**: SiliconFlow(主) > Seedance(备用) > FFmpeg Ken Burns(兜底)\n4. **错误处理**: 完善的错误检测和恢复机制\n
+## 11. 前端图片评审 UI 详细设计（v1.1 新增）
+
+### 11.1 数据类型定义
+
+#### 11.1.1 ChapterDetail 类型扩展
+
+```typescript
+interface ChapterDetail {
+  id: number;
+  title: string;
+  raw_text: string;
+  script_status: "pending" | "generating" | "draft" | "approved" | "rejected";
+  prompt_status: "pending" | "reviewing" | "approved" | "rejected";
+  image_status: "pending" | "generating" | "reviewing" | "approved" | "rejected";
+  video_status: "pending" | "generating" | "reviewing" | "approved" | "rejected";
+  prompt_review_notes: string | null;
+  image_review_notes: string | null;
+  prompt_review_round: number;
+  image_review_round: number;
+  image_prompts: Record<string, string> | null;
+  script: {
+    scenes: Array<{
+      scene_id: number;
+      visual_prompt: string;
+      narration: string;
+      character: string;
+      mood: string;
+      image_url?: string;
+    }>;
+  } | null;
+  reviews: Array<{
+    id: number;
+    review_stage: "script" | "prompt" | "image" | "video";
+    reviewer_type: "human" | "ai";
+    action: "approve" | "reject" | "revise";
+    notes: string;
+    review_detail: Record<string, any> | null;
+    created_at: string;
+  }>;
+}
+```
+
+#### 11.1.2 Chapter 列表类型扩展
+
+```typescript
+interface Chapter {
+  id: number;
+  title: string;
+  chapter_number: number;
+  script_status: string;
+  prompt_status: string;
+  image_status: string;
+  video_status: string;
+  prompt_review_round: number;
+  image_review_round: number;
+}
+```
+
+### 11.2 NovelProjectDetailPage 组件设计
+
+#### 11.2.1 章节表格列扩展
+
+在章节列表表格中新增两列状态展示：
+
+| 列名 | 字段 | 组件 | 说明 |
+|------|------|------|------|
+| 提示词 | `prompt_status` | `StatusPill` | 使用 PROMPT_STATUS_LABEL 映射 |
+| 图片 | `image_status` | `StatusPill` | 使用 IMAGE_STATUS_LABEL 映射 |
+
+```typescript
+const PROMPT_STATUS_LABEL: Record<string, string> = {
+  pending: "待评审",
+  reviewing: "评审中",
+  approved: "已通过",
+  rejected: "未通过",
+};
+
+const IMAGE_STATUS_LABEL: Record<string, string> = {
+  pending: "待生成",
+  generating: "生成中",
+  reviewing: "评审中",
+  approved: "已通过",
+  rejected: "未通过",
+};
+```
+
+### 11.3 NovelChapterPage 组件设计
+
+#### 11.3.1 概要卡片区
+
+四列网格展示当前章节四个阶段的状态：
+
+```
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│  脚本    │ │  提示词  │ │  图片    │ │  视频    │
+│ approved │ │ reviewing│ │ pending  │ │ pending  │
+└──────────┘ └──────────┘ └──────────┘ └──────────┘
+```
+
+每个卡片显示中文标签 + 状态徽章（颜色按 approved=绿、rejected=红、reviewing/generating=蓝、pending=灰）。
+
+#### 11.3.2 五步流水线操作按钮
+
+```
+① 生成脚本       → 仅在 script_status === "pending" 时显示
+② AI评审提示词   → 仅在 script_status === "approved" 且 prompt_status 不为 "approved" 时显示
+   人工通过提示词 → 跳过 AI 评审直接标记通过
+③ 生成图片       → 仅在 prompt_status === "approved" 时显示
+④ 图片评审       → 仅在 image_status === "reviewing" 或刚生成完图片时显示
+   人工通过图片   → 跳过 AI 评审直接标记通过
+⑤ 生成视频       → 仅在 image_status === "approved" 时显示（流水线门控）
+```
+
+按钮样式：主操作蓝色、通过操作绿色、进行中操作灰色+旋转图标。
+
+#### 11.3.3 Tab 页设计
+
+**Tab 1: 脚本** (默认)
+显示结构化脚本 JSON 中的 scene 列表。
+
+**Tab 2: 场景图片** (新增)
+网格布局展示所有场景的生成图片：
+```
+┌──────────────────┐  ┌──────────────────┐
+│  [场景 1 图片]   │  │  [场景 2 图片]   │
+│  提示词: ...     │  │  提示词: ...     │
+└──────────────────┘  └──────────────────┘
+```
+- 使用 `image_url` 字段或 `image_prompts` 映射显示图片
+- 无图片时显示灰色占位 + "暂无图片" 文字
+- 支持点击放大查看
+
+**Tab 3: 视频预览**
+播放生成的视频。
+
+**Tab 4: 审核记录**
+展示该章节所有 review 记录，按时间倒序：
+- 支持 `review_stage` = `script` / `prompt` / `image` / `video`
+- 标签颜色区分：脚本蓝、提示词紫、图片橙、视频绿
+- `reviewer_type` 区分 AI / 人工
+- 展示 `review_detail` 中的场景级别打分与建议
+
+#### 11.3.4 StatusLabel 组件
+
+```typescript
+function StatusLabel({ type, status }: { type: string; status: string }) {
+  const colorMap: Record<string, string> = {
+    approved: "#52c41a",
+    rejected: "#f5222d",
+    reviewing: "#1890ff",
+    generating: "#1890ff",
+    pending: "#8c8c8c",
+    draft: "#faad14",
+  };
+
+  const labelMap: Record<string, Record<string, string>> = {
+    script: { pending: "待生成", generating: "生成中", draft: "待审核", approved: "已通过", rejected: "已驳回" },
+    prompt: { pending: "待评审", reviewing: "评审中", approved: "已通过", rejected: "未通过" },
+    image: { pending: "待生成", generating: "生成中", reviewing: "评审中", approved: "已通过", rejected: "未通过" },
+    video: { pending: "待生成", generating: "生成中", reviewing: "待审核", approved: "已通过", rejected: "已驳回" },
+  };
+
+  return <span style={{ color: colorMap[status] }}>{labelMap[type]?.[status] ?? status}</span>;
+}
+```
+
+### 11.4 API 调用映射
+
+| 前端操作 | HTTP 方法 | API 路径 |
+|---------|-----------|---------|
+| AI评审提示词 | POST | `/api/v1/novel/chapters/{id}/review-prompts` |
+| 人工通过提示词 | POST | `/api/v1/novel/chapters/{id}/approve-prompts` |
+| 生成图片 | POST | `/api/v1/novel/chapters/{id}/generate-images` |
+| AI评审图片 | POST | `/api/v1/novel/chapters/{id}/review-images` |
+| 人工通过图片 | POST | `/api/v1/novel/chapters/{id}/approve-images` |
+| 获取章节详情 | GET | `/api/v1/novel/chapters/{id}` |
+
+---
+
+## 12. 实现状态与部署信息 (更新于2026-04-01)\n\n### 10.1 架构实现状态\n所有设计架构已按详细设计文档要求完成实现：\n\n#### 10.1.1 认证系统实现\n- ✅ **JWT双令牌机制**: access_token(30分钟) + refresh_token(7天)\n- ✅ **会话管理**: 最多3个并发会话\n- ✅ **安全特性**: 验证码限流、登录失败锁定、登录历史记录\n- ✅ **测试结果**: 23项API测试全部通过\n\n#### 10.1.2 视频生成系统实现\n- ✅ **7条生成路径**: 全部测试通过\n  1. P1: 资讯+TTS (无口型同步)\n  2. P2: 资讯+TTS+VideoRetalk (测试视频无人脸)\n  3. P3: DeepSeek文案生成\n  4. P4: 直接粘贴口播\n  5. P5: TTS+背景音乐\n  6. P6: 纯BGM模式\n  7. P7: Mock发布\n- ✅ **模块化架构**: TTS、VideoRetalk、BGM、视频合成\n- ✅ **异步处理**: Celery后台任务处理\n\n#### 10.1.3 小说转视频流水线实现\n- ✅ **多阶段流水线**: 小说解析 → 结构化脚本生成 → 多角色TTS → AI图片生成 → AI图片转视频 → FFmpeg视频合成\n- ✅ **AI服务集成**: \n  - DeepSeek: 结构化脚本生成\n  - Fish Audio: 多角色TTS (默认语音映射)\n  - SiliconFlow: 图片生成(Kolors) + I2V(Wan2.2)\n  - Seedance/即梦AI: 备用I2V\n  - Edge TTS: TTS备用方案 (7.2.8+版本)\n- ✅ **端到端测试**: 15场景章节视频生成成功 (16MB/121秒)\n\n### 10.2 部署架构实现\n- **服务器**: 104.244.90.202 (单核2GB VPS)\n- **服务配置**: systemd service media-agent\n- **端口**: 9090\n- **数据库**: PostgreSQL (media_agent数据库)\n- **消息队列**: Redis (Celery broker)\n- **文件存储**: 统一的媒体文件存储机制\n\n### 10.3 性能优化实现\n- ✅ **基于VPS性能设计**: 单核2GB内存限制考虑\n- ✅ **串行处理策略**: 避免并发压力\n- ✅ **轻量级架构**: 最小化资源占用\n- ⚠️ **I2V速度瓶颈**: Wan2.2每场景2-5分钟，15场景总耗时~89分钟\n\n### 10.4 重要技术决策\n1. **模型更新**: SiliconFlow旧模型(FLUX.1-schnell/Wan2.1)已下线 → 换为Kolors/Wan2.2\n2. **依赖管理**: cryptography库锁定44.0.0版本，防止Fernet解密失败\n3. **服务降级**: SiliconFlow(主) > Seedance(备用) > FFmpeg Ken Burns(兜底)\n4. **错误处理**: 完善的错误检测和恢复机制\n

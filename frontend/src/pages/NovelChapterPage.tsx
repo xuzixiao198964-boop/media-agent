@@ -16,11 +16,15 @@ type ChapterDetail = {
   id: number; project_id: number; chapter_no: number; title: string;
   raw_text: string | null; script: Script | null;
   script_status: string; script_review_notes: string | null;
+  prompt_status: string; prompt_review_notes: string | null;
+  image_status: string; image_review_notes: string | null;
   video_status: string; video_review_notes: string | null;
   output_path: string | null; audio_assets: Record<string, any> | null;
   visual_assets: Record<string, any> | null;
+  image_prompts: Record<string, any> | null;
   bgm_id: number | null; bgm_volume: number;
   estimated_duration: number | null; actual_duration: number | null;
+  prompt_review_round: number; image_review_round: number;
   error: string | null;
 };
 
@@ -44,7 +48,7 @@ export default function NovelChapterPage() {
 
   const [ch, setCh] = useState<ChapterDetail | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
-  const [tab, setTab] = useState<"script" | "video" | "reviews">("script");
+  const [tab, setTab] = useState<"script" | "images" | "video" | "reviews">("script");
 
   const [reviewNotes, setReviewNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -104,16 +108,20 @@ export default function NovelChapterPage() {
             <div className="v"><StatusLabel status={ch.script_status} type="script" /></div>
           </div>
           <div className="stat">
+            <div className="k">提示词</div>
+            <div className="v"><StatusLabel status={ch.prompt_status} type="prompt" /></div>
+          </div>
+          <div className="stat">
+            <div className="k">图片</div>
+            <div className="v"><StatusLabel status={ch.image_status} type="image" /></div>
+          </div>
+          <div className="stat">
             <div className="k">视频</div>
             <div className="v"><StatusLabel status={ch.video_status} type="video" /></div>
           </div>
           <div className="stat">
             <div className="k">预估时长</div>
             <div className="v">{formatSec(ch.estimated_duration)}</div>
-          </div>
-          <div className="stat">
-            <div className="k">实际时长</div>
-            <div className="v">{formatSec(ch.actual_duration)}</div>
           </div>
           <div className="stat">
             <div className="k">场景数</div>
@@ -123,12 +131,17 @@ export default function NovelChapterPage() {
         {ch.error && <div style={{ marginTop: 10, color: "var(--danger)", fontSize: "0.85rem" }}>错误: {ch.error}</div>}
       </div>
 
-      {/* 操作按钮 */}
+      {/* 操作按钮 — 流水线步骤 */}
       <div className="card">
+        <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginBottom: 8 }}>
+          流程: 脚本生成 → 提示词评审 → 图片生成 → 图片评审 → 视频生成
+        </div>
         <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+
+          {/* ① 脚本 */}
           {ch.script_status === "pending" && (
             <button className="primary" disabled={!!busy} onClick={() => doAction("gen-script", `/novel/chapters/${cid}/generate-script`)}>
-              {busy === "gen-script" ? "提交中..." : "生成脚本"}
+              {busy === "gen-script" ? "提交中..." : "① 生成脚本"}
             </button>
           )}
           {ch.script_status === "draft" && (
@@ -145,9 +158,70 @@ export default function NovelChapterPage() {
               </button>
             </>
           )}
-          {ch.script_status === "approved" && ch.video_status === "pending" && (
+          {ch.script_status === "rejected" && (
+            <button className="primary" disabled={!!busy} onClick={() => doAction("regen-script", `/novel/chapters/${cid}/generate-script`)}>
+              重新生成脚本
+            </button>
+          )}
+
+          {/* ② 提示词评审 */}
+          {ch.script_status === "approved" && ch.prompt_status === "pending" && (
+            <button className="primary" disabled={!!busy} onClick={() => doAction("review-prompts", `/novel/chapters/${cid}/review-prompts`)}>
+              {busy === "review-prompts" ? "提交中..." : "② AI评审提示词"}
+            </button>
+          )}
+          {ch.prompt_status === "reviewing" && (
+            <>
+              <button className="primary" disabled={!!busy} onClick={() => doAction("approve-prompts", `/novel/chapters/${cid}/approve-prompts`, { action: "approve", notes: reviewNotes || undefined })}>
+                通过提示词
+              </button>
+              <button style={{ borderColor: "var(--danger)", color: "var(--danger)" }} disabled={!!busy}
+                onClick={() => {
+                  if (!reviewNotes.trim()) { setErr("请填写驳回意见"); return; }
+                  doAction("reject-prompts", `/novel/chapters/${cid}/approve-prompts`, { action: "reject", notes: reviewNotes });
+                }}>
+                驳回提示词
+              </button>
+            </>
+          )}
+          {ch.prompt_status === "rejected" && (
+            <button className="primary" disabled={!!busy} onClick={() => doAction("review-prompts", `/novel/chapters/${cid}/review-prompts`)}>
+              重新评审提示词
+            </button>
+          )}
+
+          {/* ③ 生成图片 */}
+          {ch.prompt_status === "approved" && ch.image_status === "pending" && (
+            <button className="primary" disabled={!!busy} onClick={() => doAction("gen-images", `/novel/chapters/${cid}/generate-images`)}>
+              {busy === "gen-images" ? "提交中..." : "③ 生成图片"}
+            </button>
+          )}
+
+          {/* ④ 图片评审 */}
+          {ch.image_status === "reviewing" && (
+            <>
+              <button className="primary" disabled={!!busy} onClick={() => doAction("approve-images", `/novel/chapters/${cid}/approve-images`, { action: "approve", notes: reviewNotes || undefined })}>
+                通过图片
+              </button>
+              <button style={{ borderColor: "var(--danger)", color: "var(--danger)" }} disabled={!!busy}
+                onClick={() => {
+                  if (!reviewNotes.trim()) { setErr("请填写驳回意见"); return; }
+                  doAction("reject-images", `/novel/chapters/${cid}/approve-images`, { action: "reject", notes: reviewNotes });
+                }}>
+                驳回图片
+              </button>
+            </>
+          )}
+          {ch.image_status === "rejected" && (
+            <button className="primary" disabled={!!busy} onClick={() => doAction("gen-images", `/novel/chapters/${cid}/generate-images`)}>
+              重新生成图片
+            </button>
+          )}
+
+          {/* ⑤ 生成视频（需要图片评审通过） */}
+          {ch.image_status === "approved" && ch.video_status === "pending" && (
             <button className="primary" disabled={!!busy} onClick={() => doAction("gen-video", `/novel/chapters/${cid}/generate-video`, {})}>
-              {busy === "gen-video" ? "提交中..." : "生成视频"}
+              {busy === "gen-video" ? "提交中..." : "⑤ 生成视频"}
             </button>
           )}
           {ch.video_status === "reviewing" && (
@@ -164,18 +238,25 @@ export default function NovelChapterPage() {
               </button>
             </>
           )}
-          {ch.script_status === "rejected" && (
-            <button className="primary" disabled={!!busy} onClick={() => doAction("regen-script", `/novel/chapters/${cid}/generate-script`)}>
-              重新生成脚本
-            </button>
-          )}
           {ch.video_status === "rejected" && (
             <button className="primary" disabled={!!busy} onClick={() => doAction("regen-video", `/novel/chapters/${cid}/generate-video`, {})}>
               重新生成视频
             </button>
           )}
         </div>
-        {(ch.script_status === "draft" || ch.video_status === "reviewing") && (
+
+        {/* 进度中的提示 */}
+        {ch.script_status === "generating" && <div className="muted" style={{ marginTop: 8 }}>⏳ AI 正在生成脚本...</div>}
+        {ch.prompt_status === "reviewing" && <div className="muted" style={{ marginTop: 8 }}>⏳ AI 正在评审提示词（第{ch.prompt_review_round}轮）...</div>}
+        {ch.image_status === "generating" && <div className="muted" style={{ marginTop: 8 }}>⏳ 正在生成场景图片...</div>}
+        {ch.video_status === "generating" && <div className="muted" style={{ marginTop: 8 }}>⏳ 正在生成视频素材...</div>}
+        {ch.video_status === "compositing" && <div className="muted" style={{ marginTop: 8 }}>⏳ 正在合成最终视频...</div>}
+
+        {/* 评审意见 */}
+        {ch.prompt_review_notes && <div style={{ marginTop: 8, fontSize: "0.85rem", color: "var(--muted)" }}>提示词评审: {ch.prompt_review_notes}</div>}
+        {ch.image_review_notes && <div style={{ marginTop: 4, fontSize: "0.85rem", color: "var(--muted)" }}>图片评审: {ch.image_review_notes}</div>}
+
+        {(ch.script_status === "draft" || ch.prompt_status === "reviewing" || ch.image_status === "reviewing" || ch.video_status === "reviewing") && (
           <textarea
             value={reviewNotes}
             onChange={(e) => setReviewNotes(e.target.value)}
@@ -188,7 +269,7 @@ export default function NovelChapterPage() {
 
       {/* Tab 切换 */}
       <div className="row" style={{ gap: 0, marginBottom: 0 }}>
-        {(["script", "video", "reviews"] as const).map((t) => (
+        {(["script", "images", "video", "reviews"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -199,7 +280,7 @@ export default function NovelChapterPage() {
               fontWeight: tab === t ? 600 : 400,
             }}
           >
-            {{ script: "脚本分镜", video: "视频预览", reviews: "审核记录" }[t]}
+            {{ script: "脚本分镜", images: "场景图片", video: "视频预览", reviews: "审核记录" }[t]}
           </button>
         ))}
       </div>
@@ -237,6 +318,59 @@ export default function NovelChapterPage() {
           ) : (
             <div className="muted" style={{ textAlign: "center", padding: 20 }}>
               {ch.script_status === "generating" ? "AI 正在生成脚本..." : "暂无脚本"}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 场景图片 */}
+      {tab === "images" && (
+        <div className="card" style={{ borderRadius: "0 12px 12px 12px" }}>
+          {ch.visual_assets && Object.keys(ch.visual_assets).length > 0 ? (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+              {Object.entries(ch.visual_assets)
+                .sort(([a], [b]) => {
+                  const na = parseInt(a.replace(/\D/g, "")) || 0;
+                  const nb = parseInt(b.replace(/\D/g, "")) || 0;
+                  return na - nb;
+                })
+                .map(([key, val]) => {
+                  const url = typeof val === "string" ? val : (val as any)?.url || (val as any)?.path || "";
+                  const filename = url.split("/").pop() || key;
+                  const sceneNum = key.replace(/\D/g, "") || key;
+                  const promptKey = `scene_${sceneNum.padStart(3, "0")}`;
+                  const promptText = ch.image_prompts?.[promptKey] || ch.image_prompts?.[key] || "";
+                  return (
+                    <div key={key} style={{ border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+                      <img
+                        src={`/media/novel_assets/${url.includes("project_") ? url.split("novel_assets/").pop() : url}`}
+                        alt={`Scene ${sceneNum}`}
+                        style={{ width: "100%", height: 160, objectFit: "cover", display: "block" }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                      />
+                      <div style={{ padding: 8 }}>
+                        <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>场景 #{sceneNum}</div>
+                        {promptText && (
+                          <div className="muted" style={{ fontSize: "0.78rem", marginTop: 4, lineHeight: 1.3 }}>
+                            {typeof promptText === "string" ? promptText.slice(0, 80) : JSON.stringify(promptText).slice(0, 80)}
+                            {typeof promptText === "string" && promptText.length > 80 ? "..." : ""}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          ) : (
+            <div className="muted" style={{ textAlign: "center", padding: 20 }}>
+              {ch.image_status === "generating" ? "正在生成场景图片..." :
+               ch.prompt_status !== "approved" ? "需要先通过提示词评审" :
+               "暂无图片，请点击「生成图片」"}
+            </div>
+          )}
+          {ch.image_review_notes && (
+            <div style={{ marginTop: 12, padding: 10, background: "var(--bg)", borderRadius: 8, fontSize: "0.85rem" }}>
+              <strong>图片评审意见:</strong> {ch.image_review_notes}
             </div>
           )}
         </div>
@@ -299,7 +433,7 @@ export default function NovelChapterPage() {
               <div key={r.id} style={{ borderBottom: "1px solid var(--border)", paddingBottom: 10, marginBottom: 10 }}>
                 <div className="row" style={{ justifyContent: "space-between" }}>
                   <div>
-                    <span className="pill">{r.review_stage === "script" ? "脚本" : "视频"}</span>
+                    <span className="pill">{{ script: "脚本", prompt: "提示词", image: "图片", video: "视频" }[r.review_stage] || r.review_stage}</span>
                     <span className={`pill ${r.status === "approved" ? "ok" : r.status === "rejected" ? "err" : ""}`} style={{ marginLeft: 4 }}>
                       {r.status === "approved" ? "通过" : r.status === "rejected" ? "驳回" : "待审"}
                     </span>
@@ -326,11 +460,20 @@ export default function NovelChapterPage() {
   );
 }
 
-function StatusLabel({ status, type }: { status: string; type: "script" | "video" }) {
+function StatusLabel({ status, type }: { status: string; type: "script" | "prompt" | "image" | "video" }) {
   const MAP: Record<string, Record<string, { t: string; c: string }>> = {
     script: {
       pending: { t: "待生成", c: "var(--muted)" }, generating: { t: "生成中", c: "#ffd166" },
       draft: { t: "待审核", c: "#ffd166" }, approved: { t: "已通过", c: "var(--ok)" },
+      rejected: { t: "已驳回", c: "var(--danger)" },
+    },
+    prompt: {
+      pending: { t: "待评审", c: "var(--muted)" }, reviewing: { t: "评审中", c: "#ffd166" },
+      approved: { t: "已通过", c: "var(--ok)" }, rejected: { t: "已驳回", c: "var(--danger)" },
+    },
+    image: {
+      pending: { t: "待生成", c: "var(--muted)" }, generating: { t: "生成中", c: "#ffd166" },
+      reviewing: { t: "待审核", c: "#ffd166" }, approved: { t: "已通过", c: "var(--ok)" },
       rejected: { t: "已驳回", c: "var(--danger)" },
     },
     video: {

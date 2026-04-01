@@ -547,7 +547,223 @@ def test_video_gen_blocked_without_image_approval():
     assert "图片评审" in exc.value.detail
 ```
 
-### 5.4 TTS语音合成测试
+### 5.4 前端图片评审组件单元测试（v1.1 新增）
+
+#### 测试用例 5.4.1: NovelChapterPage 提示词/图片状态渲染
+```typescript
+import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+
+describe('NovelChapterPage - 图片评审状态', () => {
+  it('应该正确渲染四个状态指示器', async () => {
+    const mockChapter = {
+      id: 1, title: '第一章',
+      script_status: 'approved',
+      prompt_status: 'reviewing',
+      image_status: 'pending',
+      video_status: 'pending',
+      prompt_review_round: 1,
+      image_review_round: 0,
+    }
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockChapter),
+    } as any)
+
+    render(
+      <MemoryRouter initialEntries={['/novel/chapters/1']}>
+        <Routes>
+          <Route path="/novel/chapters/:id" element={<NovelChapterPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    expect(await screen.findByText('已通过')).toBeInTheDocument()   // script
+    expect(screen.getByText('评审中')).toBeInTheDocument()           // prompt
+    expect(screen.getAllByText('待生成')).toHaveLength(2)             // image + video
+  })
+
+  it('图片评审未通过时不应显示生成视频按钮', async () => {
+    const mockChapter = {
+      id: 2, title: '第二章',
+      script_status: 'approved',
+      prompt_status: 'approved',
+      image_status: 'rejected',
+      video_status: 'pending',
+    }
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockChapter),
+    } as any)
+
+    render(
+      <MemoryRouter initialEntries={['/novel/chapters/2']}>
+        <Routes>
+          <Route path="/novel/chapters/:id" element={<NovelChapterPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    await screen.findByText('第二章')
+    expect(screen.queryByRole('button', { name: /生成视频/i })).not.toBeInTheDocument()
+  })
+
+  it('image_status=approved 时应显示生成视频按钮', async () => {
+    const mockChapter = {
+      id: 3, title: '第三章',
+      script_status: 'approved',
+      prompt_status: 'approved',
+      image_status: 'approved',
+      video_status: 'pending',
+    }
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockChapter),
+    } as any)
+
+    render(
+      <MemoryRouter initialEntries={['/novel/chapters/3']}>
+        <Routes>
+          <Route path="/novel/chapters/:id" element={<NovelChapterPage />} />
+        </Routes>
+      </MemoryRouter>
+    )
+
+    await screen.findByText('第三章')
+    expect(screen.getByRole('button', { name: /生成视频/i })).toBeInTheDocument()
+  })
+})
+```
+
+#### 测试用例 5.4.2: 场景图片 Tab 渲染测试
+```typescript
+describe('NovelChapterPage - 场景图片 Tab', () => {
+  it('应该展示所有场景的图片和提示词', async () => {
+    const mockChapter = {
+      id: 1, title: '第一章',
+      image_status: 'approved',
+      script: {
+        scenes: [
+          { scene_id: 1, visual_prompt: '古代街景', image_url: '/images/scene_001.png' },
+          { scene_id: 2, visual_prompt: '月下花园', image_url: '/images/scene_002.png' },
+        ]
+      }
+    }
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockChapter),
+    } as any)
+
+    render(/* ... */)
+
+    // 切换到场景图片 Tab
+    const imagesTab = await screen.findByText('场景图片')
+    await userEvent.click(imagesTab)
+
+    expect(screen.getByText('古代街景')).toBeInTheDocument()
+    expect(screen.getByText('月下花园')).toBeInTheDocument()
+    expect(screen.getAllByRole('img')).toHaveLength(2)
+  })
+
+  it('无图片时显示占位符', async () => {
+    const mockChapter = {
+      id: 1, title: '第一章',
+      image_status: 'pending',
+      script: { scenes: [{ scene_id: 1, visual_prompt: '场景1' }] }
+    }
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockChapter),
+    } as any)
+
+    render(/* ... */)
+    const imagesTab = await screen.findByText('场景图片')
+    await userEvent.click(imagesTab)
+
+    expect(screen.getByText('暂无图片')).toBeInTheDocument()
+  })
+})
+```
+
+#### 测试用例 5.4.3: 操作按钮流水线逻辑测试
+```typescript
+describe('NovelChapterPage - 流水线操作按钮', () => {
+  it('script_status=approved 时显示 AI评审提示词 按钮', async () => {
+    const ch = {
+      script_status: 'approved',
+      prompt_status: 'pending',
+      image_status: 'pending',
+      video_status: 'pending',
+    }
+    // render with mock data...
+    expect(screen.getByRole('button', { name: /AI评审提示词/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /生成图片/i })).not.toBeInTheDocument()
+  })
+
+  it('prompt_status=approved 时显示 生成图片 按钮', async () => {
+    const ch = {
+      script_status: 'approved',
+      prompt_status: 'approved',
+      image_status: 'pending',
+      video_status: 'pending',
+    }
+    // render with mock data...
+    expect(screen.getByRole('button', { name: /生成图片/i })).toBeInTheDocument()
+  })
+
+  it('调用 AI评审提示词 接口后刷新数据', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+    // setup mock chapter with script approved
+    // click AI评审提示词 button
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/review-prompts'),
+      expect.objectContaining({ method: 'POST' })
+    )
+  })
+})
+```
+
+#### 测试用例 5.4.4: NovelProjectDetailPage 状态列渲染
+```typescript
+describe('NovelProjectDetailPage - 图片评审状态列', () => {
+  it('应该在章节表格中显示提示词和图片状态', async () => {
+    const mockProject = {
+      id: 1, title: '测试小说',
+      chapters: [
+        { id: 1, title: '第一章', prompt_status: 'approved', image_status: 'reviewing' },
+        { id: 2, title: '第二章', prompt_status: 'pending', image_status: 'pending' },
+      ]
+    }
+    vi.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockProject),
+    } as any)
+
+    render(/* ... */)
+
+    expect(await screen.findByText('已通过')).toBeInTheDocument()  // prompt of ch1
+    expect(screen.getByText('评审中')).toBeInTheDocument()          // image of ch1
+    expect(screen.getAllByText('待评审')).toHaveLength(1)            // prompt of ch2
+    expect(screen.getAllByText('待生成')).toHaveLength(1)            // image of ch2
+  })
+})
+```
+
+#### 测试用例 5.4.5: StatusLabel 组件单元测试
+```typescript
+describe('StatusLabel 组件', () => {
+  it.each([
+    ['prompt', 'approved', '已通过', '#52c41a'],
+    ['prompt', 'rejected', '未通过', '#f5222d'],
+    ['prompt', 'reviewing', '评审中', '#1890ff'],
+    ['image', 'generating', '生成中', '#1890ff'],
+    ['image', 'pending', '待生成', '#8c8c8c'],
+    ['script', 'draft', '待审核', '#faad14'],
+  ])('type=%s status=%s 应渲染为 %s', (type, status, label, color) => {
+    render(<StatusLabel type={type} status={status} />)
+    const el = screen.getByText(label)
+    expect(el).toBeInTheDocument()
+    expect(el).toHaveStyle({ color })
+  })
+})
+```
+
+### 5.5 TTS语音合成测试
 #### 测试用例 5.2.1: 三级TTS备选方案
 ```python
 async def test_tts_fallback():

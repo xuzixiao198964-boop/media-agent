@@ -590,7 +590,133 @@ async def test_full_pipeline_with_image_review():
     assert ch.output_path is not None
 ```
 
-### 5.7 部署迁移测试（v1.1 新增）
+### 5.7 前端图片评审流水线 E2E 测试（v1.1 新增）
+
+#### 5.7.1 章节详情页面图片评审流程 E2E
+```typescript
+import { test, expect } from '@playwright/test'
+
+test.describe('图片评审前端流水线', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('http://104.244.90.202/login')
+    await page.fill('input[name="username"]', 'e2e_runner')
+    await page.fill('input[name="password"]', 'E2eRunner_Pass99!!')
+    await page.click('button[type="submit"]')
+    await page.waitForURL('**/dashboard**')
+  })
+
+  test('完整图片评审流水线：提示词评审 → 图片生成 → 图片评审 → 视频生成', async ({ page }) => {
+    // 1. 导航到章节详情
+    await page.goto('http://104.244.90.202/novel/chapters/223')
+
+    // 2. 验证概要卡片包含四个状态
+    await expect(page.locator('text=脚本')).toBeVisible()
+    await expect(page.locator('text=提示词')).toBeVisible()
+    await expect(page.locator('text=图片')).toBeVisible()
+    await expect(page.locator('text=视频')).toBeVisible()
+
+    // 3. 点击 AI评审提示词 按钮
+    const reviewPromptBtn = page.getByRole('button', { name: /AI评审提示词/i })
+    if (await reviewPromptBtn.isVisible()) {
+      await reviewPromptBtn.click()
+      await expect(page.locator('text=评审中')).toBeVisible({ timeout: 10000 })
+    }
+
+    // 4. 等待提示词评审完成（轮询页面）
+    await page.waitForFunction(
+      () => document.body.innerText.includes('已通过') || document.body.innerText.includes('未通过'),
+      { timeout: 120000 }
+    )
+
+    // 5. 点击生成图片
+    const genImagesBtn = page.getByRole('button', { name: /生成图片/i })
+    if (await genImagesBtn.isVisible()) {
+      await genImagesBtn.click()
+      await expect(page.locator('text=生成中')).toBeVisible({ timeout: 10000 })
+    }
+
+    // 6. 切换到场景图片 Tab 验证图片展示
+    const imagesTab = page.getByText('场景图片')
+    await imagesTab.click()
+    await expect(page.locator('img')).toBeVisible({ timeout: 300000 })
+
+    // 7. 验证视频生成按钮在图片通过后可见
+    const genVideoBtn = page.getByRole('button', { name: /生成视频/i })
+    await expect(genVideoBtn).toBeVisible({ timeout: 60000 })
+  })
+
+  test('章节列表显示提示词和图片状态列', async ({ page }) => {
+    await page.goto('http://104.244.90.202/novel/projects/1')
+
+    // 验证表头
+    await expect(page.locator('th:has-text("提示词")')).toBeVisible()
+    await expect(page.locator('th:has-text("图片")')).toBeVisible()
+
+    // 验证状态单元格有内容
+    const cells = page.locator('td')
+    const cellTexts = await cells.allTextContents()
+    const statusKeywords = ['待评审', '评审中', '已通过', '未通过', '待生成', '生成中']
+    const hasStatusCells = cellTexts.some(t => statusKeywords.some(k => t.includes(k)))
+    expect(hasStatusCells).toBe(true)
+  })
+
+  test('图片评审未通过时视频生成按钮不可见', async ({ page }) => {
+    // 使用一个 image_status=rejected 的章节
+    await page.goto('http://104.244.90.202/novel/chapters/223')
+    await page.waitForLoadState('networkidle')
+
+    const imageStatusText = await page.locator('text=未通过').count()
+    if (imageStatusText > 0) {
+      const genVideoBtn = page.getByRole('button', { name: /生成视频/i })
+      await expect(genVideoBtn).not.toBeVisible()
+    }
+  })
+
+  test('审核记录 Tab 展示提示词和图片评审记录', async ({ page }) => {
+    await page.goto('http://104.244.90.202/novel/chapters/223')
+
+    // 切换到审核记录 Tab
+    const reviewsTab = page.getByText('审核记录')
+    await reviewsTab.click()
+
+    // 验证可以看到不同类型的评审记录
+    await expect(page.locator('text=提示词').first()).toBeVisible()
+    // 验证 AI / 人工标签
+    const aiLabel = page.locator('text=AI')
+    if (await aiLabel.count() > 0) {
+      await expect(aiLabel.first()).toBeVisible()
+    }
+  })
+})
+```
+
+#### 5.7.2 前端 API 调用集成验证
+```python
+async def test_frontend_api_integration():
+    """验证前端调用的所有图片评审 API 均正常响应"""
+    token = await get_test_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    base = "http://104.244.90.202/api/v1"
+    chapter_id = 223
+
+    # GET 章节详情包含新字段
+    r = await httpx.AsyncClient(timeout=15).get(
+        f"{base}/novel/chapters/{chapter_id}", headers=headers
+    )
+    assert r.status_code == 200
+    data = r.json()
+    for field in ("prompt_status", "image_status", "prompt_review_round", "image_review_round"):
+        assert field in data, f"缺少字段: {field}"
+
+    # POST 评审接口可调用（不一定成功但不能500）
+    for endpoint in ["review-prompts", "review-images", "approve-prompts", "approve-images", "generate-images"]:
+        r = await httpx.AsyncClient(timeout=30).post(
+            f"{base}/novel/chapters/{chapter_id}/{endpoint}", headers=headers
+        )
+        assert r.status_code in (200, 400, 409), f"{endpoint} 返回 {r.status_code}"
+```
+
+### 5.8 部署迁移测试（v1.1 新增）
 
 #### 5.7.1 端口80可访问性测试
 ```python
