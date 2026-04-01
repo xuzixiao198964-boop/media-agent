@@ -54,6 +54,21 @@ async def lifespan(app: FastAPI):
             await conn.execute(text("ALTER TABLE generation_jobs ALTER COLUMN article_id DROP NOT NULL"))
         except Exception:
             pass
+        for col_stmt in (
+            "ALTER TABLE novel_chapters ADD COLUMN IF NOT EXISTS prompt_status VARCHAR(32) DEFAULT 'pending'",
+            "ALTER TABLE novel_chapters ADD COLUMN IF NOT EXISTS prompt_review_notes TEXT",
+            "ALTER TABLE novel_chapters ADD COLUMN IF NOT EXISTS prompt_review_round INTEGER DEFAULT 0",
+            "ALTER TABLE novel_chapters ADD COLUMN IF NOT EXISTS image_prompts JSON",
+            "ALTER TABLE novel_chapters ADD COLUMN IF NOT EXISTS image_status VARCHAR(32) DEFAULT 'pending'",
+            "ALTER TABLE novel_chapters ADD COLUMN IF NOT EXISTS image_review_notes TEXT",
+            "ALTER TABLE novel_chapters ADD COLUMN IF NOT EXISTS image_review_round INTEGER DEFAULT 0",
+            "ALTER TABLE chapter_reviews ADD COLUMN IF NOT EXISTS reviewer_type VARCHAR(16) DEFAULT 'human'",
+            "ALTER TABLE chapter_reviews ADD COLUMN IF NOT EXISTS review_detail JSON",
+        ):
+            try:
+                await conn.execute(text(col_stmt))
+            except Exception:
+                pass
         for stmt in (
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(64)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(50)",

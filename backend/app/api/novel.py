@@ -18,9 +18,9 @@ from app.models import (
 from app.schemas.novel import (
     BgmOut, ChapterDetailOut, ChapterImportRequest, ChapterOut,
     CharacterCreate, CharacterOut, CharacterUpdate,
-    GenerateVideoRequest, NovelSourceDetail, NovelSourceItem,
+    GenerateVideoRequest, ImageApproveRequest, NovelSourceDetail, NovelSourceItem,
     ProjectCreate, ProjectOut, ProjectUpdate,
-    RegenerateSceneRequest, ReviewOut,
+    PromptApproveRequest, RegenerateSceneRequest, ReviewOut,
     ScriptEditRequest, ScriptReviewRequest,
     VideoReviewRequest,
 )
@@ -359,6 +359,146 @@ async def review_script(
     return {"detail": f"脚本已{body.action}", "script_status": ch.script_status}
 
 
+# ━━ 图片提示词评审 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@router.post("/chapters/{chapter_id}/review-prompts")
+async def review_prompts_api(
+    chapter_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    ch = await db.get(NovelChapter, chapter_id)
+    if not ch:
+        raise HTTPException(404, "章节不存在")
+    await _get_project(db, ch.project_id, user.id)
+
+    if ch.script_status != "approved":
+        raise HTTPException(400, "脚本未通过审核，请先审核通过脚本")
+
+    ch.prompt_status = "reviewing"
+    await db.commit()
+
+    from app.novel_tasks import review_chapter_prompts_task
+    review_chapter_prompts_task.delay(chapter_id)
+    return {"detail": "提示词评审任务已提交", "chapter_id": chapter_id}
+
+
+@router.post("/chapters/{chapter_id}/approve-prompts")
+async def approve_prompts(
+    chapter_id: int,
+    body: PromptApproveRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    ch = await db.get(NovelChapter, chapter_id)
+    if not ch:
+        raise HTTPException(404, "章节不存在")
+    await _get_project(db, ch.project_id, user.id)
+
+    if body.action == "approve":
+        ch.prompt_status = "approved"
+        ch.prompt_review_notes = body.notes
+        scenes = (ch.script or {}).get("scenes", [])
+        ch.image_prompts = {s.get("scene_id", i): s.get("visual_prompt", "")
+                           for i, s in enumerate(scenes)}
+    elif body.action == "reject":
+        ch.prompt_status = "rejected"
+        ch.prompt_review_notes = body.notes
+
+    round_no = await _next_review_round(db, chapter_id, "prompt")
+    review = ChapterReview(
+        chapter_id=chapter_id,
+        review_stage="prompt",
+        review_round=round_no,
+        status="approved" if body.action == "approve" else "rejected",
+        reviewer_id=user.id,
+        reviewer_type="human",
+        notes=body.notes,
+    )
+    db.add(review)
+    await db.commit()
+    return {"detail": f"提示词已{body.action}", "prompt_status": ch.prompt_status}
+
+
+# ━━ 图片生成与评审 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+@router.post("/chapters/{chapter_id}/generate-images")
+async def generate_images(
+    chapter_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    ch = await db.get(NovelChapter, chapter_id)
+    if not ch:
+        raise HTTPException(404, "章节不存在")
+    await _get_project(db, ch.project_id, user.id)
+
+    if ch.prompt_status != "approved":
+        raise HTTPException(400, "提示词评审未通过，请先完成提示词评审")
+    if ch.image_status in ("generating",):
+        raise HTTPException(409, "图片正在生成中")
+
+    ch.image_status = "generating"
+    await db.commit()
+
+    from app.novel_tasks import generate_chapter_images_task
+    generate_chapter_images_task.delay(chapter_id)
+    return {"detail": "图片生成任务已提交", "chapter_id": chapter_id}
+
+
+@router.post("/chapters/{chapter_id}/review-images")
+async def review_images_api(
+    chapter_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    ch = await db.get(NovelChapter, chapter_id)
+    if not ch:
+        raise HTTPException(404, "章节不存在")
+    await _get_project(db, ch.project_id, user.id)
+
+    if ch.image_status not in ("reviewing", "generating"):
+        raise HTTPException(400, "图片未处于可评审状态")
+
+    from app.novel_tasks import review_chapter_images_task
+    review_chapter_images_task.delay(chapter_id)
+    return {"detail": "图片评审任务已提交", "chapter_id": chapter_id}
+
+
+@router.post("/chapters/{chapter_id}/approve-images")
+async def approve_images(
+    chapter_id: int,
+    body: ImageApproveRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    ch = await db.get(NovelChapter, chapter_id)
+    if not ch:
+        raise HTTPException(404, "章节不存在")
+    await _get_project(db, ch.project_id, user.id)
+
+    if body.action == "approve":
+        ch.image_status = "approved"
+        ch.image_review_notes = body.notes
+    elif body.action == "reject":
+        ch.image_status = "rejected"
+        ch.image_review_notes = body.notes
+
+    round_no = await _next_review_round(db, chapter_id, "image")
+    review = ChapterReview(
+        chapter_id=chapter_id,
+        review_stage="image",
+        review_round=round_no,
+        status="approved" if body.action == "approve" else "rejected",
+        reviewer_id=user.id,
+        reviewer_type="human",
+        notes=body.notes,
+    )
+    db.add(review)
+    await db.commit()
+    return {"detail": f"图片已{body.action}", "image_status": ch.image_status}
+
+
 # ━━ 视频生成 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 @router.post("/chapters/{chapter_id}/generate-video")
@@ -375,6 +515,8 @@ async def generate_video(
 
     if ch.script_status != "approved":
         raise HTTPException(400, "脚本未通过审核，请先审核通过")
+    if ch.image_status != "approved":
+        raise HTTPException(400, "图片评审未通过，请先完成图片评审后再生成视频")
     if ch.video_status in ("generating", "compositing"):
         raise HTTPException(409, "视频正在生成中，请稍候")
 

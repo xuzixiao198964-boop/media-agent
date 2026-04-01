@@ -251,9 +251,19 @@ class NovelChapter(Base):
     title: Mapped[str] = mapped_column(String(512))
     raw_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     script: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
-    script_status: Mapped[str] = mapped_column(String(32), default="pending")  # pending/draft/reviewing/approved/rejected
+    script_status: Mapped[str] = mapped_column(String(32), default="pending")
     script_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    video_status: Mapped[str] = mapped_column(String(32), default="pending")  # pending/generating/compositing/reviewing/approved/rejected/published
+    # 图片提示词评审
+    prompt_status: Mapped[str] = mapped_column(String(32), default="pending")
+    prompt_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    prompt_review_round: Mapped[int] = mapped_column(Integer, default=0)
+    image_prompts: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # 图片评审
+    image_status: Mapped[str] = mapped_column(String(32), default="pending")
+    image_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_review_round: Mapped[int] = mapped_column(Integer, default=0)
+    # 视频
+    video_status: Mapped[str] = mapped_column(String(32), default="pending")
     video_review_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     output_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     audio_assets: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
@@ -274,12 +284,14 @@ class ChapterReview(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     chapter_id: Mapped[int] = mapped_column(ForeignKey("novel_chapters.id"), index=True)
-    review_stage: Mapped[str] = mapped_column(String(16))  # script / video
+    review_stage: Mapped[str] = mapped_column(String(16))  # script / prompt / image / video
     review_round: Mapped[int] = mapped_column(Integer, default=1)
-    status: Mapped[str] = mapped_column(String(16), default="pending")  # pending / approved / rejected
+    status: Mapped[str] = mapped_column(String(16), default="pending")
     reviewer_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    reviewer_type: Mapped[str] = mapped_column(String(16), default="human")  # ai / human
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     items: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    review_detail: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

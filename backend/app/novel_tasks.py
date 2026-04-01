@@ -9,13 +9,15 @@ from sqlalchemy import select
 
 from app.config import get_settings
 from app.db_sync import SessionLocal
-from app.models import NovelChapter, NovelCharacter, NovelProject, BgmLibrary
+from app.models import NovelChapter, NovelCharacter, NovelProject, BgmLibrary, ChapterReview
 from app.services.flow_log import log_sync
 from app.services.novel_script_gen import generate_script, extract_characters_from_script
 from app.services.fish_audio_tts import synthesize_scene
 from app.services.novel_compose import generate_scene_image, compose_chapter_video
 from app.services.ai_video_gen import ai_image_to_video, batch_ai_image_to_video
 from app.services.siliconflow_img import generate_image as siliconflow_generate
+from app.services.prompt_review import review_prompts, regenerate_prompt, MAX_REVIEW_ROUNDS as PROMPT_MAX_ROUNDS
+from app.services.image_review import review_images, MAX_REVIEW_ROUNDS as IMAGE_MAX_ROUNDS
 from app.services.tts_audio import ffprobe_duration
 from app.tasks import celery_app
 
@@ -80,6 +82,307 @@ def generate_novel_script_task(self, chapter_id: int):
         db.close()
 
 
+@celery_app.task(name="review_chapter_prompts", bind=True)
+def review_chapter_prompts_task(self, chapter_id: int):
+    """AI 评审章节分镜脚本中的图片提示词。"""
+    db = SessionLocal()
+    try:
+        ch = db.get(NovelChapter, chapter_id)
+        if not ch:
+            return {"error": "chapter not found"}
+        proj = db.get(NovelProject, ch.project_id)
+        if not proj:
+            return {"error": "project not found"}
+        if ch.script_status != "approved":
+            return {"error": "脚本未通过审核"}
+
+        ch.prompt_status = "reviewing"
+        ch.prompt_review_round = (ch.prompt_review_round or 0) + 1
+        db.commit()
+
+        scenes = (ch.script or {}).get("scenes", [])
+        if not scenes:
+            ch.prompt_status = "approved"
+            db.commit()
+            return {"status": "approved", "reason": "无场景"}
+
+        chars = db.execute(
+            select(NovelCharacter).where(NovelCharacter.project_id == proj.id)
+        ).scalars().all()
+        char_appearances = {c.name: c.appearance or "" for c in chars if c.appearance}
+
+        result = review_prompts(
+            db, chapter_id, scenes, ch.raw_text or "",
+            visual_style=proj.visual_style or "",
+            characters=char_appearances,
+        )
+
+        review = ChapterReview(
+            chapter_id=chapter_id,
+            review_stage="prompt",
+            review_round=ch.prompt_review_round,
+            status="approved" if result["overall_pass"] else "rejected",
+            reviewer_type="ai",
+            notes=f"AI评审第{ch.prompt_review_round}轮",
+            review_detail=result,
+        )
+        db.add(review)
+
+        if result["overall_pass"]:
+            ch.prompt_status = "approved"
+            prompts_map = {s.get("scene_id", i): s.get("visual_prompt", "")
+                          for i, s in enumerate(scenes)}
+            ch.image_prompts = prompts_map
+            db.commit()
+            log_sync(db, "novel_chapter", ch.id, "prompt_approved", "提示词评审通过", "info")
+            return {"status": "approved"}
+
+        if ch.prompt_review_round >= PROMPT_MAX_ROUNDS:
+            ch.prompt_status = "rejected"
+            ch.prompt_review_notes = f"经过{PROMPT_MAX_ROUNDS}轮评审仍未通过，需人工介入"
+            db.commit()
+            log_sync(db, "novel_chapter", ch.id, "prompt_max_retries",
+                     f"提示词评审{PROMPT_MAX_ROUNDS}轮未通过", "warning")
+            return {"status": "rejected", "reason": "max_retries"}
+
+        updated_scenes = list(scenes)
+        for sr in result.get("scenes", []):
+            if not sr.get("pass", True) and sr.get("suggested_prompt"):
+                for s in updated_scenes:
+                    if s.get("scene_id") == sr.get("scene_id"):
+                        s["visual_prompt"] = sr["suggested_prompt"]
+                        break
+
+        script = ch.script or {}
+        script["scenes"] = updated_scenes
+        ch.script = script
+        ch.prompt_status = "pending"
+        ch.prompt_review_notes = json.dumps(result, ensure_ascii=False)[:2000] if 'json' in dir() else str(result)[:2000]
+        db.commit()
+
+        review_chapter_prompts_task.delay(chapter_id)
+        return {"status": "retrying", "round": ch.prompt_review_round}
+
+    except Exception as e:
+        if "ch" in locals() and ch:
+            ch.prompt_status = "pending"
+            ch.error = str(e)[:2000]
+            db.commit()
+        log_sync(db, "novel_chapter", chapter_id, "prompt_review_fail", str(e), "error")
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="generate_chapter_images", bind=True)
+def generate_chapter_images_task(self, chapter_id: int):
+    """生成章节的所有场景图片（提示词评审通过后调用）。"""
+    db = SessionLocal()
+    try:
+        ch = db.get(NovelChapter, chapter_id)
+        if not ch:
+            return {"error": "chapter not found"}
+        proj = db.get(NovelProject, ch.project_id)
+        if not proj:
+            return {"error": "project not found"}
+        if ch.prompt_status != "approved":
+            return {"error": "提示词评审未通过"}
+
+        ch.image_status = "generating"
+        db.commit()
+
+        scenes = (ch.script or {}).get("scenes", [])
+        chars_map = {}
+        chars = db.execute(
+            select(NovelCharacter).where(NovelCharacter.project_id == proj.id)
+        ).scalars().all()
+        for c in chars:
+            chars_map[c.name] = c
+
+        assets_dir = Path(settings.novel_assets_dir) / f"project_{proj.id}" / f"chapter_{ch.id}"
+        visual_dir = assets_dir / "visual"
+        visual_dir.mkdir(parents=True, exist_ok=True)
+
+        orientation = proj.video_orientation or "portrait"
+        img_w, img_h = (1920, 1080) if orientation == "landscape" else (1080, 1920)
+
+        def _img_worker(scene):
+            sid = scene.get("scene_id", 0)
+            speaker = scene.get("speaker")
+            visual_prompt = scene.get("visual_prompt", "")
+            mood = scene.get("mood", "neutral")
+            text = scene.get("text") or ""
+            img_path = visual_dir / f"scene_{sid:03d}.png"
+
+            full_prompt = ""
+            if proj.visual_style:
+                full_prompt += proj.visual_style + ", "
+            if speaker and speaker in chars_map and chars_map[speaker].appearance:
+                full_prompt += chars_map[speaker].appearance + ", "
+            full_prompt += visual_prompt
+
+            db_local = SessionLocal()
+            try:
+                ok = siliconflow_generate(db_local, full_prompt, img_path, width=img_w, height=img_h)
+                if not ok:
+                    generate_scene_image(visual_prompt, mood, img_path, width=img_w, height=img_h,
+                                         speaker=speaker, text=text)
+            except Exception as e:
+                log.warning("Image gen fail scene %d: %s", sid, e)
+                generate_scene_image(visual_prompt, mood, img_path, width=img_w, height=img_h,
+                                     speaker=speaker, text=text)
+            finally:
+                db_local.close()
+            return sid, img_path
+
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_IMG) as pool:
+            futures = [pool.submit(_img_worker, s) for s in scenes]
+            visual_assets = {}
+            for f in as_completed(futures):
+                sid, path = f.result()
+                visual_assets[str(sid)] = str(path)
+
+        ch.visual_assets = visual_assets
+        ch.image_status = "reviewing"
+        db.commit()
+
+        log_sync(db, "novel_chapter", ch.id, "images_generated",
+                 f"图片生成完成, {len(visual_assets)}个场景", "info")
+        return {"status": "reviewing", "count": len(visual_assets)}
+
+    except Exception as e:
+        if "ch" in locals() and ch:
+            ch.image_status = "pending"
+            ch.error = str(e)[:2000]
+            db.commit()
+        log_sync(db, "novel_chapter", chapter_id, "image_gen_fail", str(e), "error")
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+@celery_app.task(name="review_chapter_images", bind=True)
+def review_chapter_images_task(self, chapter_id: int):
+    """AI 评审生成的章节图片。"""
+    db = SessionLocal()
+    try:
+        ch = db.get(NovelChapter, chapter_id)
+        if not ch:
+            return {"error": "chapter not found"}
+        proj = db.get(NovelProject, ch.project_id)
+        if not proj:
+            return {"error": "project not found"}
+
+        ch.image_status = "reviewing"
+        ch.image_review_round = (ch.image_review_round or 0) + 1
+        db.commit()
+
+        visual_assets = ch.visual_assets or {}
+        if not visual_assets:
+            ch.image_status = "approved"
+            db.commit()
+            return {"status": "approved", "reason": "无图片资产"}
+
+        scene_images = {int(k): Path(v) for k, v in visual_assets.items()}
+        scenes = (ch.script or {}).get("scenes", [])
+        scene_prompts = {s.get("scene_id", i): s.get("visual_prompt", "")
+                        for i, s in enumerate(scenes)}
+
+        result = review_images(
+            db, chapter_id, scene_images, scene_prompts,
+            visual_style=proj.visual_style or "",
+        )
+
+        review = ChapterReview(
+            chapter_id=chapter_id,
+            review_stage="image",
+            review_round=ch.image_review_round,
+            status="approved" if result["overall_pass"] else "rejected",
+            reviewer_type="ai",
+            notes=f"AI图片评审第{ch.image_review_round}轮",
+            review_detail=result,
+        )
+        db.add(review)
+
+        if result["overall_pass"]:
+            ch.image_status = "approved"
+            db.commit()
+            log_sync(db, "novel_chapter", ch.id, "image_approved", "图片评审通过", "info")
+            return {"status": "approved"}
+
+        if ch.image_review_round >= IMAGE_MAX_ROUNDS:
+            ch.image_status = "approved"
+            ch.image_review_notes = f"经过{IMAGE_MAX_ROUNDS}轮评审仍有瑕疵，强制通过（使用当前图片）"
+            db.commit()
+            log_sync(db, "novel_chapter", ch.id, "image_force_approved",
+                     f"图片评审{IMAGE_MAX_ROUNDS}轮后强制通过", "warning")
+            return {"status": "approved", "reason": "force_after_max_retries"}
+
+        failed_sids = [s["scene_id"] for s in result.get("scenes", []) if not s.get("pass", True)]
+        if failed_sids:
+            _regenerate_failed_images(db, ch, proj, failed_sids)
+
+        ch.image_status = "generating"
+        db.commit()
+
+        generate_chapter_images_task.apply_async(
+            args=[chapter_id],
+            countdown=2,
+        )
+        return {"status": "retrying", "round": ch.image_review_round, "failed_scenes": failed_sids}
+
+    except Exception as e:
+        if "ch" in locals() and ch:
+            ch.image_status = "reviewing"
+            ch.error = str(e)[:2000]
+            db.commit()
+        log_sync(db, "novel_chapter", chapter_id, "image_review_fail", str(e), "error")
+        return {"error": str(e)}
+    finally:
+        db.close()
+
+
+def _regenerate_failed_images(db, ch, proj, failed_sids):
+    """重新生成失败的场景图片。"""
+    scenes = (ch.script or {}).get("scenes", [])
+    scene_map = {s["scene_id"]: s for s in scenes}
+    chars_map = {}
+    chars = db.execute(
+        select(NovelCharacter).where(NovelCharacter.project_id == proj.id)
+    ).scalars().all()
+    for c in chars:
+        chars_map[c.name] = c
+
+    assets_dir = Path(settings.novel_assets_dir) / f"project_{proj.id}" / f"chapter_{ch.id}"
+    visual_dir = assets_dir / "visual"
+    orientation = proj.video_orientation or "portrait"
+    img_w, img_h = (1920, 1080) if orientation == "landscape" else (1080, 1920)
+
+    for sid in failed_sids:
+        scene = scene_map.get(sid)
+        if not scene:
+            continue
+        img_path = visual_dir / f"scene_{sid:03d}.png"
+        speaker = scene.get("speaker")
+        full_prompt = ""
+        if proj.visual_style:
+            full_prompt += proj.visual_style + ", "
+        if speaker and speaker in chars_map and chars_map[speaker].appearance:
+            full_prompt += chars_map[speaker].appearance + ", "
+        full_prompt += scene.get("visual_prompt", "")
+        full_prompt += ", high quality, no deformation, correct anatomy"
+
+        ok = siliconflow_generate(db, full_prompt, img_path, width=img_w, height=img_h,
+                                  negative_prompt="blurry, deformed, ugly, extra limbs, extra fingers, bad anatomy, watermark, text")
+        if not ok:
+            generate_scene_image(scene.get("visual_prompt", ""), scene.get("mood", "neutral"),
+                                 img_path, width=img_w, height=img_h,
+                                 speaker=speaker, text=scene.get("text"))
+
+
+import json  # noqa: E402 — needed by prompt review task serialization
+
+
 @celery_app.task(name="generate_chapter_video", bind=True)
 def generate_chapter_video_task(self, chapter_id: int):
     db = SessionLocal()
@@ -92,6 +395,8 @@ def generate_chapter_video_task(self, chapter_id: int):
             return {"error": "project not found"}
         if ch.script_status != "approved":
             return {"error": "脚本未通过审核"}
+        if ch.image_status != "approved":
+            return {"error": "图片评审未通过，请先完成图片评审"}
 
         ch.video_status = "generating"
         ch.error = None

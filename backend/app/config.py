@@ -47,7 +47,7 @@ class Settings(BaseSettings):
 
     # 给阿里云抓取 input.video_url/input.audio_url 用的公网访问基址
     # 你的站点前端/静态文件由 Nginx 监听在 8080
-    public_base_url: str = "http://104.244.90.202:9090"
+    public_base_url: str = "http://104.244.90.202"
 
     publish_mode: str = "mock"
 

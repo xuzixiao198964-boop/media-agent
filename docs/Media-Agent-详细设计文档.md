@@ -4199,4 +4199,143 @@ echo "恢复完成"
 4. [Media Agent 部署指南](../deployment/)（待生成）
 ---
 **文档状态**: ✅ 已完成核心模块详细设计  
-**下一步**: 根据此详细设计文档进行开发实施\n\n## 10. 实现状态与部署信息 (更新于2026-03-31)\n\n### 10.1 架构实现状态\n所有设计架构已按详细设计文档要求完成实现：\n\n#### 10.1.1 认证系统实现\n- ✅ **JWT双令牌机制**: access_token(30分钟) + refresh_token(7天)\n- ✅ **会话管理**: 最多3个并发会话\n- ✅ **安全特性**: 验证码限流、登录失败锁定、登录历史记录\n- ✅ **测试结果**: 23项API测试全部通过\n\n#### 10.1.2 视频生成系统实现\n- ✅ **7条生成路径**: 全部测试通过\n  1. P1: 资讯+TTS (无口型同步)\n  2. P2: 资讯+TTS+VideoRetalk (测试视频无人脸)\n  3. P3: DeepSeek文案生成\n  4. P4: 直接粘贴口播\n  5. P5: TTS+背景音乐\n  6. P6: 纯BGM模式\n  7. P7: Mock发布\n- ✅ **模块化架构**: TTS、VideoRetalk、BGM、视频合成\n- ✅ **异步处理**: Celery后台任务处理\n\n#### 10.1.3 小说转视频流水线实现\n- ✅ **多阶段流水线**: 小说解析 → 结构化脚本生成 → 多角色TTS → AI图片生成 → AI图片转视频 → FFmpeg视频合成\n- ✅ **AI服务集成**: \n  - DeepSeek: 结构化脚本生成\n  - Fish Audio: 多角色TTS (默认语音映射)\n  - SiliconFlow: 图片生成(Kolors) + I2V(Wan2.2)\n  - Seedance/即梦AI: 备用I2V\n  - Edge TTS: TTS备用方案 (7.2.8+版本)\n- ✅ **端到端测试**: 15场景章节视频生成成功 (16MB/121秒)\n\n### 10.2 部署架构实现\n- **服务器**: 104.244.90.202 (单核2GB VPS)\n- **服务配置**: systemd service media-agent\n- **端口**: 9090\n- **数据库**: PostgreSQL (media_agent数据库)\n- **消息队列**: Redis (Celery broker)\n- **文件存储**: 统一的媒体文件存储机制\n\n### 10.3 性能优化实现\n- ✅ **基于VPS性能设计**: 单核2GB内存限制考虑\n- ✅ **串行处理策略**: 避免并发压力\n- ✅ **轻量级架构**: 最小化资源占用\n- ⚠️ **I2V速度瓶颈**: Wan2.2每场景2-5分钟，15场景总耗时~89分钟\n\n### 10.4 重要技术决策\n1. **模型更新**: SiliconFlow旧模型(FLUX.1-schnell/Wan2.1)已下线 → 换为Kolors/Wan2.2\n2. **依赖管理**: cryptography库锁定44.0.0版本，防止Fernet解密失败\n3. **服务降级**: SiliconFlow(主) > Seedance(备用) > FFmpeg Ken Burns(兜底)\n4. **错误处理**: 完善的错误检测和恢复机制\n
+**下一步**: 根据此详细设计文档进行开发实施
+
+---
+
+## 10. 图片评审子系统详细设计（v1.1 新增）
+
+### 10.1 图片提示词评审服务
+
+#### 10.1.1 服务接口
+
+```python
+class PromptReviewService:
+    def review_prompts(
+        db: Session,
+        chapter_id: int,
+        scenes: list[dict],
+        raw_text: str,
+        visual_style: str,
+        characters: dict[str, str],  # name -> appearance
+    ) -> dict:
+        """
+        AI 评审分镜脚本中的 visual_prompt。
+        返回: {"overall_pass": bool, "scenes": [...]}
+        """
+
+    def regenerate_prompt(
+        db: Session,
+        scene: dict,
+        review_notes: str,
+        raw_text: str,
+        visual_style: str,
+    ) -> str:
+        """根据评审意见重新生成单个 scene 的提示词。"""
+```
+
+#### 10.1.2 评审 Prompt 模板
+
+```
+你是专业的影视画面评审专家。请评审以下分镜脚本的画面描述（visual_prompt），
+检查每个场景的提示词是否准确描述了小说原文中的场景。
+
+评审标准：
+1. 场景描述是否与小说原文一致（环境、时间、氛围）
+2. 涉及的角色外貌是否包含在提示词中
+3. 提示词的细节是否充足（光线、色调、构图）
+4. 各场景之间是否连贯
+
+每个场景打分 0-100，70分以上为通过。
+不通过的场景必须给出修改建议（suggested_prompt）。
+```
+
+#### 10.1.3 数据库变更
+
+novel_chapters 表新增字段：
+
+```sql
+ALTER TABLE novel_chapters ADD COLUMN prompt_status VARCHAR(32) DEFAULT 'pending';
+ALTER TABLE novel_chapters ADD COLUMN prompt_review_notes TEXT;
+ALTER TABLE novel_chapters ADD COLUMN prompt_review_round INTEGER DEFAULT 0;
+ALTER TABLE novel_chapters ADD COLUMN image_status VARCHAR(32) DEFAULT 'pending';
+ALTER TABLE novel_chapters ADD COLUMN image_review_notes TEXT;
+ALTER TABLE novel_chapters ADD COLUMN image_review_round INTEGER DEFAULT 0;
+ALTER TABLE novel_chapters ADD COLUMN image_prompts JSON;
+```
+
+chapter_reviews 表扩展：
+
+```sql
+ALTER TABLE chapter_reviews ADD COLUMN reviewer_type VARCHAR(16) DEFAULT 'human';
+ALTER TABLE chapter_reviews ADD COLUMN review_detail JSON;
+-- review_stage 可选值扩展为: script / prompt / image / video
+```
+
+### 10.2 图片评审服务
+
+#### 10.2.1 服务接口
+
+```python
+class ImageReviewService:
+    def review_images(
+        db: Session,
+        chapter_id: int,
+        scene_images: dict[int, Path],  # scene_id -> image_path
+        scene_prompts: dict[int, str],  # scene_id -> visual_prompt
+        visual_style: str,
+    ) -> dict:
+        """
+        AI 评审生成的图片是否满足提示词。
+        返回: {"overall_pass": bool, "scenes": [...]}
+        """
+```
+
+#### 10.2.2 评审实现策略
+
+由于服务器资源有限（1GB RAM），图片评审采用轻量策略：
+
+| 方案 | 优先级 | 说明 |
+|------|--------|------|
+| DeepSeek Chat（文本描述对比） | 主要 | 对比提示词与图片元数据/特征描述 |
+| Gemini Vision API | 备用 | 传入图片+提示词，多模态评审 |
+| 规则匹配（PIL分析） | 兜底 | 检查分辨率、色彩分布、基本完整性 |
+
+### 10.3 API 接口设计
+
+#### POST /api/v1/novel/chapters/{chapter_id}/review-prompts
+触发图片提示词评审（AI自动 + 可人工覆盖）。
+
+#### POST /api/v1/novel/chapters/{chapter_id}/approve-prompts
+人工直接通过提示词评审。
+
+#### POST /api/v1/novel/chapters/{chapter_id}/generate-images
+触发 AI 图片生成（仅在提示词评审通过后可调用）。
+
+#### POST /api/v1/novel/chapters/{chapter_id}/review-images
+触发图片评审（AI自动 + 可人工覆盖）。
+
+#### POST /api/v1/novel/chapters/{chapter_id}/approve-images
+人工直接通过图片评审。
+
+### 10.4 任务流程
+
+```
+generate_novel_script_task  (已有)
+    ↓ script_status = draft
+script_review  (已有, 人工)
+    ↓ script_status = approved
+review_prompts_task  (新增, AI自动)
+    ↓ prompt_status = approved
+generate_images_task  (新增, AI图片)
+    ↓ image_status = reviewing
+review_images_task  (新增, AI自动)
+    ↓ image_status = approved
+generate_chapter_video_task  (已有, 但增加前置检查)
+    ↓ video_status = reviewing
+video_review  (已有, 人工)
+```
+
+---
+
+## 11. 实现状态与部署信息 (更新于2026-04-01)\n\n### 10.1 架构实现状态\n所有设计架构已按详细设计文档要求完成实现：\n\n#### 10.1.1 认证系统实现\n- ✅ **JWT双令牌机制**: access_token(30分钟) + refresh_token(7天)\n- ✅ **会话管理**: 最多3个并发会话\n- ✅ **安全特性**: 验证码限流、登录失败锁定、登录历史记录\n- ✅ **测试结果**: 23项API测试全部通过\n\n#### 10.1.2 视频生成系统实现\n- ✅ **7条生成路径**: 全部测试通过\n  1. P1: 资讯+TTS (无口型同步)\n  2. P2: 资讯+TTS+VideoRetalk (测试视频无人脸)\n  3. P3: DeepSeek文案生成\n  4. P4: 直接粘贴口播\n  5. P5: TTS+背景音乐\n  6. P6: 纯BGM模式\n  7. P7: Mock发布\n- ✅ **模块化架构**: TTS、VideoRetalk、BGM、视频合成\n- ✅ **异步处理**: Celery后台任务处理\n\n#### 10.1.3 小说转视频流水线实现\n- ✅ **多阶段流水线**: 小说解析 → 结构化脚本生成 → 多角色TTS → AI图片生成 → AI图片转视频 → FFmpeg视频合成\n- ✅ **AI服务集成**: \n  - DeepSeek: 结构化脚本生成\n  - Fish Audio: 多角色TTS (默认语音映射)\n  - SiliconFlow: 图片生成(Kolors) + I2V(Wan2.2)\n  - Seedance/即梦AI: 备用I2V\n  - Edge TTS: TTS备用方案 (7.2.8+版本)\n- ✅ **端到端测试**: 15场景章节视频生成成功 (16MB/121秒)\n\n### 10.2 部署架构实现\n- **服务器**: 104.244.90.202 (单核2GB VPS)\n- **服务配置**: systemd service media-agent\n- **端口**: 9090\n- **数据库**: PostgreSQL (media_agent数据库)\n- **消息队列**: Redis (Celery broker)\n- **文件存储**: 统一的媒体文件存储机制\n\n### 10.3 性能优化实现\n- ✅ **基于VPS性能设计**: 单核2GB内存限制考虑\n- ✅ **串行处理策略**: 避免并发压力\n- ✅ **轻量级架构**: 最小化资源占用\n- ⚠️ **I2V速度瓶颈**: Wan2.2每场景2-5分钟，15场景总耗时~89分钟\n\n### 10.4 重要技术决策\n1. **模型更新**: SiliconFlow旧模型(FLUX.1-schnell/Wan2.1)已下线 → 换为Kolors/Wan2.2\n2. **依赖管理**: cryptography库锁定44.0.0版本，防止Fernet解密失败\n3. **服务降级**: SiliconFlow(主) > Seedance(备用) > FFmpeg Ken Burns(兜底)\n4. **错误处理**: 完善的错误检测和恢复机制\n

@@ -115,6 +115,8 @@ class ChapterOut(BaseModel):
     chapter_no: int
     title: str
     script_status: str
+    prompt_status: str = "pending"
+    image_status: str = "pending"
     video_status: str
     estimated_duration: int | None
     actual_duration: float | None
@@ -122,6 +124,8 @@ class ChapterOut(BaseModel):
     output_path: str | None
     bgm_id: int | None
     bgm_volume: float
+    prompt_review_round: int = 0
+    image_review_round: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -132,9 +136,12 @@ class ChapterDetailOut(ChapterOut):
     raw_text: str | None
     script: dict | None
     script_review_notes: str | None
+    prompt_review_notes: str | None
+    image_review_notes: str | None
     video_review_notes: str | None
     audio_assets: dict | None
     visual_assets: dict | None
+    image_prompts: dict | None
 
 
 class ScriptEditRequest(BaseModel):
@@ -177,6 +184,16 @@ class VideoReviewRequest(BaseModel):
 class RegenerateSceneRequest(BaseModel):
     scene_ids: list[int]
     target: str = "all"  # all / visual / audio
+
+
+class PromptApproveRequest(BaseModel):
+    action: str = Field(description="approve / reject")
+    notes: str | None = None
+
+
+class ImageApproveRequest(BaseModel):
+    action: str = Field(description="approve / reject")
+    notes: str | None = None
 
 
 # ── BGM ──

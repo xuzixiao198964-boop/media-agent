@@ -471,7 +471,83 @@ async def test_api_rate_limiting():
     rate_limited = sum(1 for r in results if isinstance(r, RateLimitError))
     assert rate_limited > 0  # 应该有被限制的请求
 ```
-### 5.2 TTS语音合成测试
+### 5.2 图片提示词评审测试（v1.1 新增）
+#### 测试用例 5.2.1: 提示词评审 - 通过场景
+```python
+def test_prompt_review_pass():
+    """测试提示词评审通过场景"""
+    scenes = [
+        {"scene_id": 1, "visual_prompt": "古代扬州城街景，黄昏时分，落魄书生在酒馆窗边饮酒", "mood": "melancholy"},
+        {"scene_id": 2, "visual_prompt": "月下花园，中年儒商漫步", "mood": "peaceful"},
+    ]
+    raw_text = "贾雨村在扬州城中寄居，日日以诗酒自遣..."
+    result = review_prompts_sync(scenes, raw_text, visual_style="中国工笔画风格")
+    assert result["overall_pass"] is True
+    assert all(s["pass"] for s in result["scenes"])
+    assert all(s["score"] >= 70 for s in result["scenes"])
+```
+
+#### 测试用例 5.2.2: 提示词评审 - 不通过场景
+```python
+def test_prompt_review_fail():
+    """测试提示词不满足小说需求时被驳回"""
+    scenes = [
+        {"scene_id": 1, "visual_prompt": "现代城市高楼大厦", "mood": "neutral"},
+    ]
+    raw_text = "古代扬州城中，夕阳西下..."
+    result = review_prompts_sync(scenes, raw_text, visual_style="中国工笔画风格")
+    assert result["overall_pass"] is False
+    failed = [s for s in result["scenes"] if not s["pass"]]
+    assert len(failed) >= 1
+    assert "suggested_prompt" in failed[0]
+```
+
+#### 测试用例 5.2.3: 提示词评审 - 最大重试次数
+```python
+def test_prompt_review_max_retries():
+    """测试提示词评审最大重试3轮"""
+    chapter = create_test_chapter(prompt_review_round=3)
+    result = attempt_prompt_review(chapter.id)
+    assert result["action"] == "manual_review_required"
+    assert chapter.prompt_review_round == 3
+```
+
+### 5.3 图片评审测试（v1.1 新增）
+#### 测试用例 5.3.1: 图片评审 - 通过
+```python
+def test_image_review_pass():
+    """测试图片满足提示词要求时通过评审"""
+    scene_images = {1: Path("/tmp/test_scene_001.png")}
+    scene_prompts = {1: "古代扬州城街景，黄昏"}
+    result = review_images_sync(scene_images, scene_prompts, visual_style="中国工笔画")
+    assert result["overall_pass"] is True
+```
+
+#### 测试用例 5.3.2: 图片评审 - 检测错位
+```python
+def test_image_review_detect_misalignment():
+    """测试图片存在错位/变形时被检出"""
+    scene_images = {1: Path("/tmp/test_deformed.png")}
+    scene_prompts = {1: "正常的古代人物场景"}
+    result = review_images_sync(scene_images, scene_prompts)
+    assert result["overall_pass"] is False
+    failed = result["scenes"][0]
+    assert "issues" in failed
+    assert failed["action"] == "regenerate"
+```
+
+#### 测试用例 5.3.3: 图片评审通过后才能生成视频
+```python
+def test_video_gen_blocked_without_image_approval():
+    """测试图片评审未通过时不能开始视频生成"""
+    chapter = create_test_chapter(image_status="reviewing")
+    with pytest.raises(HTTPException) as exc:
+        generate_video(chapter.id)
+    assert exc.value.status_code == 400
+    assert "图片评审" in exc.value.detail
+```
+
+### 5.4 TTS语音合成测试
 #### 测试用例 5.2.1: 三级TTS备选方案
 ```python
 async def test_tts_fallback():

@@ -459,9 +459,9 @@ async def test_system_load_monitoring():
     # 1. 获取初始系统状态
     initial_metrics = await get_system_metrics()
     print(f"初始状态: CPU={initial_metrics['cpu_percent']}%, Memory={initial_metrics['memory_percent']}%")
-    # 2. 创建负载测试任务
+    # 2. 创建负载测试任务（减至2个以适应VPS资源）
     load_tasks = []
-    for i in range(5):  # 创建多个视频生成任务
+    for i in range(2):  # 创建多个视频生成任务
         task = asyncio.create_task(
             submit_video_generation({
                 "article_id": 1000 + i,
@@ -485,4 +485,133 @@ async def test_system_load_monitoring():
             # 检查是否有任务被暂停或延迟
             active_count = await get_active_task_count()
             assert active_count <= 1  # 串行处理
-        await asyncio.sleep(6)  # 每6\n\n## 项目状态更新 (2026-03-31)\n\n### 当前实现状态\n所有核心功能已按需求完成实现：\n1. ✅ 用户认证系统 (JWT双令牌，会话管理)\n2. ✅ 视频生成系统 (7条路径全部测试通过)\n3. ✅ 小说转视频流水线 (端到端测试成功)\n4. ✅ AI服务集成 (DeepSeek/Fish Audio/SiliconFlow/Seedance/Edge TTS)\n\n### 部署信息\n- 服务器: 104.244.90.202:9090\n- 服务状态: 正常运行\n- 数据库: PostgreSQL\n\n\n## 5. 集成测试结果与系统验证 (更新于2026-03-31)\n\n### 5.1 系统集成测试结果\n#### 5.1.1 端到端业务流程测试\n| 业务流程 | 测试场景 | 测试结果 | 验证要点 |\n|----------|----------|----------|----------|\n| 用户注册登录 | 新用户完整流程 | ✅ 通过 | 注册→登录→会话管理→退出 |\n| 视频生成流程 | 7条生成路径 | ✅ 通过 | 路径选择→参数配置→任务提交→结果获取 |\n| 小说转视频 | 完整15场景 | ✅ 通过 | 选书→脚本生成→TTS→图片生成→I2V→合成 |\n| API Key管理 | 加密存储与使用 | ✅ 通过 | 前端填写→加密存储→服务解密使用 |\n\n#### 5.1.2 模块间接口测试\n- ✅ **前端-后端接口**: RESTful API全部正常\n- ✅ **后端-数据库**: SQLAlchemy ORM操作正常\n- ✅ **后端-Celery**: 异步任务提交与状态查询正常\n- ✅ **Celery-Redis**: 消息队列通信正常\n- ✅ **服务-外部API**: AI服务调用与错误处理正常\n\n### 5.2 部署环境集成验证\n#### 5.2.1 生产环境验证 (104.244.90.202:9090)\n- ✅ **服务部署**: systemd service配置正确，自动启动\n- ✅ **端口访问**: 9090端口可正常访问前端和API\n- ✅ **静态资源**: 前端资源加载正常\n- ✅ **API文档**: Swagger UI可正常访问\n- ✅ **健康检查**: /api/health端点返回正常\n\n#### 5.2.2 依赖服务验证\n- ✅ **PostgreSQL**: 数据库连接、表结构、数据操作正常\n- ✅ **Redis**: Celery broker连接、任务队列正常\n- ✅ **文件系统**: 媒体文件存储目录读写权限正常\n- ✅ **网络连接**: 外部AI服务API调用网络连通正常\n\n### 5.3 性能与稳定性测试\n#### 5.3.1 基于VPS性能的测试结果\n- ✅ **内存使用**: 单进程运行，内存占用控制在合理范围\n- ✅ **CPU使用**: 串行处理避免CPU过载\n- ✅ **磁盘IO**: 媒体文件读写性能满足需求\n- ⚠️ **I2V处理时间**: 单个场景2-5分钟，需优化或并行处理\n- ✅ **错误恢复**: 任务失败后的重试和恢复机制正常\n\n#### 5.3.2 长时间运行测试\n- **测试时长**: 连续运行48小时\n- **测试结果**: 服务稳定，无内存泄漏\n- **问题发现**: 无重大稳定性问题\n- **建议**: 定期监控日志和资源使用情况\n\n### 5.4 安全集成测试\n- ✅ **API认证**: JWT令牌验证正常\n- ✅ **权限控制**: 未授权访问被正确拒绝\n- ✅ **输入验证**: 用户输入的安全过滤正常\n- ✅ **敏感数据**: API Key加密存储和解密使用正常\n- ✅ **日志记录**: 安全相关操作有完整日志\n\n### 5.5 已知集成问题与改进建议\n1. **I2V服务集成**: SiliconFlow Wan2.2速度较慢，建议：\n   - 实现并行提交多个场景\n   - 设置合理的超时和重试机制\n   - 考虑服务降级到Seedance或FFmpeg Ken Burns\n2. **Seedance集成**: 待用户配置endpoint后补充测试\n3. **监控集成**: 建议集成Prometheus监控指标\n4. **日志集成**: 建议集成ELK栈进行日志集中管理\n
+        await asyncio.sleep(6)  # 每6\n\n## 项目状态更新 (2026-03-31)\n\n### 当前实现状态\n所有核心功能已按需求完成实现：\n1. ✅ 用户认证系统 (JWT双令牌，会话管理)\n2. ✅ 视频生成系统 (7条路径全部测试通过)\n3. ✅ 小说转视频流水线 (端到端测试成功)\n4. ✅ AI服务集成 (DeepSeek/Fish Audio/SiliconFlow/Seedance/Edge TTS)\n\n### 部署信息\n- 服务器: 104.244.90.202:9090\n- 服务状态: 正常运行\n- 数据库: PostgreSQL\n\n\n## 5. 集成测试结果与系统验证 (更新于2026-03-31)\n\n### 5.1 系统集成测试结果\n#### 5.1.1 端到端业务流程测试\n| 业务流程 | 测试场景 | 测试结果 | 验证要点 |\n|----------|----------|----------|----------|\n| 用户注册登录 | 新用户完整流程 | ✅ 通过 | 注册→登录→会话管理→退出 |\n| 视频生成流程 | 7条生成路径 | ✅ 通过 | 路径选择→参数配置→任务提交→结果获取 |\n| 小说转视频 | 完整15场景 | ✅ 通过 | 选书→脚本生成→TTS→图片生成→I2V→合成 |\n| API Key管理 | 加密存储与使用 | ✅ 通过 | 前端填写→加密存储→服务解密使用 |\n\n#### 5.1.2 模块间接口测试\n- ✅ **前端-后端接口**: RESTful API全部正常\n- ✅ **后端-数据库**: SQLAlchemy ORM操作正常\n- ✅ **后端-Celery**: 异步任务提交与状态查询正常\n- ✅ **Celery-Redis**: 消息队列通信正常\n- ✅ **服务-外部API**: AI服务调用与错误处理正常\n\n### 5.2 部署环境集成验证\n#### 5.2.1 生产环境验证 (104.244.90.202:9090)\n- ✅ **服务部署**: systemd service配置正确，自动启动\n- ✅ **端口访问**: 9090端口可正常访问前端和API\n- ✅ **静态资源**: 前端资源加载正常\n- ✅ **API文档**: Swagger UI可正常访问\n- ✅ **健康检查**: /api/health端点返回正常\n\n#### 5.2.2 依赖服务验证\n- ✅ **PostgreSQL**: 数据库连接、表结构、数据操作正常\n- ✅ **Redis**: Celery broker连接、任务队列正常\n- ✅ **文件系统**: 媒体文件存储目录读写权限正常\n- ✅ **网络连接**: 外部AI服务API调用网络连通正常\n\n### 5.3 性能与稳定性测试\n#### 5.3.1 基于VPS性能的测试结果\n- ✅ **内存使用**: 单进程运行，内存占用控制在合理范围\n- ✅ **CPU使用**: 串行处理避免CPU过载\n- ✅ **磁盘IO**: 媒体文件读写性能满足需求\n- ⚠️ **I2V处理时间**: 单个场景2-5分钟，需优化或并行处理\n- ✅ **错误恢复**: 任务失败后的重试和恢复机制正常\n\n#### 5.3.2 长时间运行测试\n- **测试时长**: 连续运行48小时\n- **测试结果**: 服务稳定，无内存泄漏\n- **问题发现**: 无重大稳定性问题\n- **建议**: 定期监控日志和资源使用情况\n\n### 5.4 安全集成测试\n- ✅ **API认证**: JWT令牌验证正常\n- ✅ **权限控制**: 未授权访问被正确拒绝\n- ✅ **输入验证**: 用户输入的安全过滤正常\n- ✅ **敏感数据**: API Key加密存储和解密使用正常\n- ✅ **日志记录**: 安全相关操作有完整日志\n\n### 5.6 图片评审流水线集成测试（v1.1 新增）
+
+#### 5.6.1 图片提示词评审集成测试
+```python
+async def test_prompt_review_integration():
+    """测试脚本审核通过后触发提示词评审完整流程"""
+    # 1. 创建项目并导入章节
+    proj = await create_test_project()
+    ch = await import_test_chapter(proj.id)
+
+    # 2. 生成脚本
+    await generate_script(ch.id)
+    await wait_task_complete(ch.id, "script")
+
+    # 3. 审核脚本通过
+    await review_script(ch.id, action="approve")
+
+    # 4. 触发提示词评审
+    resp = await client.post(f"/api/v1/novel/chapters/{ch.id}/review-prompts")
+    assert resp.status_code == 200
+
+    # 5. 等待评审完成
+    ch = await get_chapter(ch.id)
+    assert ch.prompt_status in ("approved", "rejected")
+
+    # 如果被驳回，验证建议提示词
+    if ch.prompt_status == "rejected":
+        review = await get_latest_review(ch.id, "prompt")
+        assert review.review_detail is not None
+        for scene in review.review_detail["scenes"]:
+            if not scene["pass"]:
+                assert "suggested_prompt" in scene
+```
+
+#### 5.6.2 图片评审集成测试
+```python
+async def test_image_review_integration():
+    """测试图片生成后触发图片评审完整流程"""
+    ch = await prepare_chapter_with_approved_prompts()
+
+    # 1. 触发图片生成
+    resp = await client.post(f"/api/v1/novel/chapters/{ch.id}/generate-images")
+    assert resp.status_code == 200
+
+    # 2. 等待图片生成完成
+    await wait_task_complete(ch.id, "image_generation")
+
+    # 3. 触发图片评审
+    resp = await client.post(f"/api/v1/novel/chapters/{ch.id}/review-images")
+    assert resp.status_code == 200
+
+    # 4. 等待评审完成
+    ch = await get_chapter(ch.id)
+    assert ch.image_status in ("approved", "rejected")
+```
+
+#### 5.6.3 图片评审阻断视频生成测试
+```python
+async def test_video_blocked_without_image_review():
+    """测试图片评审未通过时阻断视频生成"""
+    ch = await prepare_chapter_with_approved_script()  # 脚本通过但图片未评审
+
+    # 尝试生成视频 - 应被阻断
+    resp = await client.post(f"/api/v1/novel/chapters/{ch.id}/generate-video",
+                             json={"bgm_volume": 0.15})
+    assert resp.status_code == 400
+    assert "图片评审" in resp.json()["detail"]
+```
+
+#### 5.6.4 端到端完整流程测试（含图片评审）
+```python
+async def test_full_pipeline_with_image_review():
+    """测试完整流水线：脚本→提示词评审→图片生成→图片评审→视频生成→成片审核"""
+    proj = await create_test_project()
+    ch = await import_test_chapter(proj.id)
+
+    # 阶段1: 脚本生成+审核
+    await generate_script(ch.id)
+    await wait_task_complete(ch.id, "script")
+    await review_script(ch.id, action="approve")
+
+    # 阶段2: 提示词评审（AI自动）
+    await trigger_prompt_review(ch.id)
+    await wait_task_complete(ch.id, "prompt")
+    ch = await get_chapter(ch.id)
+    assert ch.prompt_status == "approved"
+
+    # 阶段3: 图片生成+评审
+    await trigger_image_generation(ch.id)
+    await wait_task_complete(ch.id, "image_generation")
+    await trigger_image_review(ch.id)
+    await wait_task_complete(ch.id, "image")
+    ch = await get_chapter(ch.id)
+    assert ch.image_status == "approved"
+
+    # 阶段4: 视频生成
+    await generate_video(ch.id)
+    await wait_task_complete(ch.id, "video")
+
+    # 阶段5: 成片审核
+    ch = await get_chapter(ch.id)
+    assert ch.video_status == "reviewing"
+    assert ch.output_path is not None
+```
+
+### 5.7 部署迁移测试（v1.1 新增）
+
+#### 5.7.1 端口80可访问性测试
+```python
+async def test_port_80_accessibility():
+    """测试迁移后通过80端口访问"""
+    resp = await httpx.AsyncClient().get("http://104.244.90.202/health")
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "ok"
+```
+
+#### 5.7.2 旧服务已停止测试
+```python
+async def test_old_services_stopped():
+    """测试旧的9000和9090端口服务已停止"""
+    import socket
+    for port in [9000, 9090]:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(3)
+        result = sock.connect_ex(("104.244.90.202", port))
+        sock.close()
+        assert result != 0, f"端口 {port} 应已关闭但仍在监听"
+```
+
+### 5.8 已知集成问题与改进建议\n1. **I2V服务集成**: SiliconFlow Wan2.2速度较慢，建议：\n   - 实现并行提交多个场景\n   - 设置合理的超时和重试机制\n   - 考虑服务降级到Seedance或FFmpeg Ken Burns\n2. **Seedance集成**: 待用户配置endpoint后补充测试\n3. **监控集成**: 建议集成Prometheus监控指标\n4. **日志集成**: 建议集成ELK栈进行日志集中管理\n
