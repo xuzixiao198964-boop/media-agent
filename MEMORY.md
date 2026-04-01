@@ -61,22 +61,6 @@
 - **23 项 API 测试全部通过** ✓
 - 更新测试文档 (v1.1)
 
-### 2026-03-29~30：小说转视频功能实现与 AI 服务集成
-- **新功能实现**: 完整的小说转视频流水线，包括前端可视化和 API Key 管理界面
-- **AI 服务集成**:
-  - DeepSeek: 结构化脚本生成
-  - Fish Audio: 多角色 TTS（默认语音 `54a5170264694bfc8e9ad98df7bd89c3`）
-  - SiliconFlow: 图片生成（Kwai-Kolors/Kolors）+ I2V（Wan-AI/Wan2.2-I2V-A14B）
-  - Seedance/即梦 AI: 备用 I2V（需用户在火山引擎控制台配置 endpoint）
-  - Edge TTS: TTS 备用方案（需 7.2.8+ 版本）
-- **重大 Bug 修复**:
-  - SiliconFlow 旧模型 FLUX.1-schnell 和 Wan2.1 已下线 → 换为 Kolors 和 Wan2.2
-  - Fish Audio 默认 voice_id 不存在 → 新增 FISH_DEFAULT_VOICES 映射
-  - cryptography 库被意外升级到 46.x 导致 Fernet 解密失败 → 回退 44.0.0
-  - Edge TTS 7.0.0 认证失败 → 升级到 7.2.8
-- **端到端测试成功**: 15 场景章节视频，AI 图片 + Fish Audio 语音 + 部分 AI I2V，最终 16MB/121秒
-- **已知瓶颈**: Wan2.2 I2V 每场景约 2-5 分钟，15 场景总耗时 ~89 分钟
-
 ### 2026-03-28 晚：全路径视频生成测试
 - **测试目标**：验证所有7条视频生成路径都能正常工作
 - **修复的关键问题**：
@@ -137,16 +121,9 @@
 - **文件管理**: 统一的媒体文件存储和访问机制
 - **错误处理**: 完善的错误检测和恢复机制
 
-### 小说转视频系统（Novel-to-Video Pipeline）
-- **多阶段流水线**: 小说解析 → 结构化脚本生成(DeepSeek) → 多角色TTS(Fish Audio/Edge TTS) → AI图片生成(SiliconFlow Kolors) → AI图片转视频(SiliconFlow Wan2.2/Seedance) → FFmpeg视频合成
-- **前端可视化**: 选书、阶段追踪、审核反馈、预估时长
-- **API Key 管理**: Fernet 加密存储在 DB，前端统一填写界面
-- **AI 服务优先级**: SiliconFlow(主) > Seedance(备用) > FFmpeg Ken Burns(兜底)
-- **Celery + Redis**: 异步任务处理（视频生成耗时长）
-
 ### 性能优化
 - **基于 VPS 性能设计**: 单核 2GB 内存限制
-- **去掉 Redis 依赖**: 简化部署复杂度（注：Celery 仍使用 Redis 作为 broker）
+- **去掉 Redis 依赖**: 简化部署复杂度
 - **串行处理策略**: 避免并发压力
 - **轻量级架构**: 最小化资源占用
 
@@ -173,15 +150,6 @@
 4. **错误处理**: 为不同的失败场景设计明确的错误码和用户提示
 5. **测试覆盖**: 对所有生成路径进行端到端测试验证
 
-### AI 服务集成经验
-1. **模型可用性**: SiliconFlow 模型可能随时下架，需定期检查 `/v1/models` API
-2. **依赖链风险**: 安装新 SDK（如 volcengine）可能升级已有依赖（cryptography），导致破坏性变更 — **锁定关键库版本**
-3. **Fernet 加密**: 依赖 `cryptography` 版本，跨版本升级可能导致解密失败
-4. **Seedance/火山引擎**: AK/SK 不能直接调用 content_generation API，必须先创建推理接入点获取 endpoint ID
-5. **Fish Audio**: 需要有效的 voice_id，可通过 `/model` API 获取热门语音列表
-6. **Edge TTS**: 微软会定期更新认证机制，`edge-tts` 库需保持最新
-7. **I2V 速度**: SiliconFlow Wan2.2 单个视频片段 2-5 分钟，15 场景串行约 89 分钟，需考虑并行或缩短轮询
-
 ### 开发经验
 1. **文档驱动**: 先完善文档，再编写代码
 2. **逐步验证**: 从简单功能开始，逐步完善
@@ -206,9 +174,6 @@
 - [ ] 优化视频生成质量（特别是VideoRetalk路径）
 - [ ] 增加更多BGM选项和模板
 - [ ] 实现视频预览和编辑功能
-- [ ] 优化 I2V 速度：考虑并行提交或缩短超时
-- [ ] 用户配置 Seedance endpoint 后启用备用 I2V
-- [ ] 锁定 `cryptography==44.0.0` 到 requirements.txt 防止意外升级
 
 ### 中期规划
 - [ ] 实现分布式抓取能力
@@ -229,7 +194,7 @@
 ### media-agent vs ai-novel-agent
 | 项目 | 端口 | 路径 | 功能 |
 |------|------|------|------|
-| **media-agent** | 9090 | `/opt/media-agent` | 媒体资讯抓取处理 + 小说转视频 |
+| **media-agent** | 9090 | `/opt/media-agent` | 媒体资讯抓取处理 |
 | **ai-novel-agent** | 9000 | `/opt/ai-novel-agent` | AI 小说生成系统 |
 
 **重要**: 两个项目完全独立，不得混用代码、配置或记忆。
@@ -241,5 +206,3 @@
 - 2026-03-28: 同步近期工作成果与部署状态
 - 2026-03-28 晚: 同步全路径视频生成测试结果与经验
 - 2026-03-29: 记忆同步验证，确认项目记忆完整性
-- 2026-03-30: 同步小说转视频功能实现、AI 服务集成修复（SiliconFlow/Fish Audio/Edge TTS/Seedance）、端到端测试成功
-- 2026-03-31: 记忆同步检查，确认项目状态完整
