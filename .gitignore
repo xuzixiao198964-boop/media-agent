@@ -166,7 +166,7 @@ Thumbs.db
 
 # Agent session data
 agent-transcripts/
-memory/
+# memory/ kept in git for project continuity
 terminals/
 scripts/
 
